@@ -13,6 +13,7 @@ import {
   User,
   Lock,
   PaintBrush,
+  NavigationArrow,
   Sun,
   Moon,
   Desktop,
@@ -25,6 +26,12 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { authClient } from '@/hooks/useAuth';
 import { useTheme } from '@/hooks/useTheme';
 import { useQueryClient } from '@tanstack/react-query';
+import {
+  usePreferencesStore,
+  ALL_TAB_KEYS,
+  TAB_LABELS,
+} from '@/stores/preferences';
+import type { TabKey } from '@/stores/preferences';
 
 const { Title, Text } = Typography;
 
@@ -420,6 +427,135 @@ function SecuritySection() {
   );
 }
 
+// -- Navigation Section --
+
+function NavigationSection() {
+  const showAllTabs = usePreferencesStore((s) => s.showAllTabs);
+  const hiddenTabs = usePreferencesStore((s) => s.hiddenTabs);
+  const setShowAllTabs = usePreferencesStore((s) => s.setShowAllTabs);
+  const toggleTab = usePreferencesStore((s) => s.toggleTab);
+
+  return (
+    <Card variant="borderless" style={{ background: 'var(--ant-color-bg-container)' }}>
+      <SectionHeader icon={NavigationArrow} title="Navigation" />
+
+      <Text type="secondary" style={{ display: 'block', marginBottom: 16, fontSize: 13 }}>
+        Choose which tabs appear in the navigation bar. Hidden tabs and their
+        content are still accessible via search and direct links.
+      </Text>
+
+      {/* Show all toggle */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '10px 12px',
+          borderRadius: 8,
+          background: 'var(--ant-color-fill-quaternary)',
+          marginBottom: 12,
+        }}
+      >
+        <div>
+          <Text strong style={{ fontSize: 13 }}>
+            Show all tabs
+          </Text>
+          <br />
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Display every tab regardless of individual settings
+          </Text>
+        </div>
+        <button
+          onClick={() => setShowAllTabs(!showAllTabs)}
+          style={{
+            position: 'relative',
+            width: 44,
+            height: 24,
+            borderRadius: 12,
+            border: 'none',
+            background: showAllTabs ? cssVar.accent : 'var(--ant-color-fill-secondary)',
+            cursor: 'pointer',
+            transition: 'background 0.2s ease',
+            flexShrink: 0,
+          }}
+        >
+          <span
+            style={{
+              position: 'absolute',
+              top: 2,
+              left: showAllTabs ? 22 : 2,
+              width: 20,
+              height: 20,
+              borderRadius: 10,
+              background: '#fff',
+              transition: 'left 0.2s ease',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.15)',
+            }}
+          />
+        </button>
+      </div>
+
+      {/* Per-tab toggles */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
+          opacity: showAllTabs ? 0.5 : 1,
+          pointerEvents: showAllTabs ? 'none' : 'auto',
+          transition: 'opacity 0.2s ease',
+        }}
+      >
+        {ALL_TAB_KEYS.map((key: TabKey) => {
+          const isVisible = !hiddenTabs.includes(key);
+          return (
+            <div
+              key={key}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '8px 12px',
+                borderRadius: 8,
+              }}
+            >
+              <Text style={{ fontSize: 13 }}>{TAB_LABELS[key]}</Text>
+              <button
+                onClick={() => toggleTab(key)}
+                style={{
+                  position: 'relative',
+                  width: 44,
+                  height: 24,
+                  borderRadius: 12,
+                  border: 'none',
+                  background: isVisible ? cssVar.accent : 'var(--ant-color-fill-secondary)',
+                  cursor: 'pointer',
+                  transition: 'background 0.2s ease',
+                  flexShrink: 0,
+                }}
+              >
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 2,
+                    left: isVisible ? 22 : 2,
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    background: '#fff',
+                    transition: 'left 0.2s ease',
+                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.15)',
+                  }}
+                />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
 // -- Appearance Section --
 
 function AppearanceSection() {
@@ -503,6 +639,7 @@ export function SettingsPage() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: SECTION_GAP }}>
         <ProfileSection />
+        <NavigationSection />
         <SecuritySection />
         <AppearanceSection />
       </div>

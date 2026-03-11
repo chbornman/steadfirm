@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { Layout, Dropdown, Avatar, Grid } from 'antd';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -23,6 +23,8 @@ import { useTheme } from '@/hooks/useTheme';
 import { signOut } from '@/hooks/useAuth';
 import { useMusicPlayerStore } from '@/stores/music-player';
 import { useAudiobookPlayerStore } from '@/stores/audiobook-player';
+import { usePreferencesStore } from '@/stores/preferences';
+import type { TabKey } from '@/stores/preferences';
 import { MusicPlayerManager } from '@/components/MusicPlayerManager';
 import { AudiobookPlayerManager } from '@/components/AudiobookPlayerManager';
 
@@ -45,6 +47,9 @@ const navItems = [
 /** Shared spring config for the sliding pill indicator */
 const pillSpring = { type: 'spring', stiffness: 500, damping: 35 } as const;
 
+/** Tabs that are always shown regardless of visibility settings. */
+const alwaysVisibleKeys = new Set(['/settings']);
+
 export function AppLayout({ children }: AppLayoutProps) {
   const navigate = useNavigate();
   const routerState = useRouterState();
@@ -65,8 +70,22 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   const ThemeIcon = mode === 'dark' ? Moon : mode === 'light' ? Sun : Desktop;
 
+  const showAllTabs = usePreferencesStore((s) => s.showAllTabs);
+  const hiddenTabs = usePreferencesStore((s) => s.hiddenTabs);
+
+  const visibleNavItems = useMemo(
+    () =>
+      navItems.filter(
+        (item) =>
+          alwaysVisibleKeys.has(item.key) ||
+          showAllTabs ||
+          !hiddenTabs.includes(item.key as TabKey),
+      ),
+    [showAllTabs, hiddenTabs],
+  );
+
   const activeKey =
-    navItems.find(
+    visibleNavItems.find(
       (item) =>
         currentPath === item.key ||
         (item.matchPrefix && currentPath.startsWith(item.matchPrefix)),
@@ -146,7 +165,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 position: 'relative',
               }}
             >
-              {navItems.map((item) => {
+              {visibleNavItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeKey === item.key;
                 return (
@@ -295,7 +314,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             borderTop: '1px solid var(--ant-color-border)',
           }}
         >
-          {[...navItems, { key: '/upload', label: 'Upload', icon: CloudArrowUp }].map((item) => {
+          {[...visibleNavItems, { key: '/upload', label: 'Upload', icon: CloudArrowUp }].map((item) => {
             const Icon = item.icon;
             const isActive =
               'matchPrefix' in item && item.matchPrefix
