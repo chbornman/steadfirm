@@ -25,10 +25,10 @@ pub fn audiobooks_router() -> Router {
         .route("/", get(list_audiobooks))
 }
 
-/// Actual Budget proxy — budgeting
-pub fn budget_router() -> Router {
+/// Steadfirm files — unclassified uploads
+pub fn files_router() -> Router {
     Router::new()
-        .route("/", get(get_budget))
+        .route("/", get(list_files))
 }
 
 // TODO: each handler will proxy requests to the underlying service,
@@ -51,6 +51,6 @@ async fn list_audiobooks() -> Json<Value> {
     Json(json!({ "service": "audiobookshelf", "status": "pending" }))
 }
 
-async fn get_budget() -> Json<Value> {
-    Json(json!({ "service": "actual", "status": "pending" }))
+async fn list_files() -> Json<Value> {
+    Json(json!({ "service": "steadfirm-files", "status": "pending" }))
 }

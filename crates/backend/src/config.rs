@@ -18,8 +18,9 @@ pub struct Config {
     pub paperless_token: Option<String>,
     pub audiobookshelf_url: Option<String>,
     pub audiobookshelf_token: Option<String>,
-    pub actual_url: Option<String>,
-    pub actual_password: Option<String>,
+
+    // Local file storage for unclassified uploads
+    pub files_storage_path: String,
 }
 
 impl Config {
@@ -37,8 +38,7 @@ impl Config {
             paperless_token: env_optional("PAPERLESS_TOKEN"),
             audiobookshelf_url: env_optional("AUDIOBOOKSHELF_URL"),
             audiobookshelf_token: env_optional("AUDIOBOOKSHELF_TOKEN"),
-            actual_url: env_optional("ACTUAL_URL"),
-            actual_password: env_optional("ACTUAL_PASSWORD"),
+            files_storage_path: env_or("FILES_STORAGE_PATH", "/data/steadfirm/files"),
         })
     }
 }

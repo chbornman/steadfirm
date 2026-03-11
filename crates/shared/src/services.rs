@@ -9,6 +9,4 @@ pub struct ServiceConfig {
     pub paperless_token: Option<String>,
     pub audiobookshelf_url: Option<String>,
     pub audiobookshelf_token: Option<String>,
-    pub actual_url: Option<String>,
-    pub actual_password: Option<String>,
 }

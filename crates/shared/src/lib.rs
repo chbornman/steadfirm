@@ -13,8 +13,8 @@ pub enum ServiceKind {
     Documents,
     /// Audiobook library and player (Audiobookshelf)
     Audiobooks,
-    /// Envelope budgeting (Actual Budget)
-    Budget,
+    /// Unclassified files (Steadfirm storage)
+    Files,
 }
 
 /// File classification result from the drop zone

@@ -2,7 +2,7 @@
 
 ## One-liner
 
-A single app and managed server that gives non-technical people a private, unified digital life — photos, media, documents, audiobooks, and budgeting — backed by best-in-class open-source services they never need to know about.
+A single app and managed server that gives non-technical people a private, unified digital life — photos, media, documents, and audiobooks — backed by best-in-class open-source services they never need to know about.
 
 ## The Problem
 
@@ -11,10 +11,10 @@ People's digital lives are fragmented across services that spy on them:
 - **Photos** are in iCloud or Google Photos — scanned, analyzed, used for training
 - **Movies and music** are rented, not owned — they disappear when licenses expire
 - **Documents** are in Google Drive or Dropbox — searchable by the provider
-- **Finances** are in YNAB at $15/month — data held hostage by a subscription
 - **Audiobooks** are in Audible — DRM-locked, non-transferable
+- **Files** are scattered across devices with no unified access
 
-Self-hosted alternatives exist for every one of these (Immich, Jellyfin, Paperless-ngx, Actual Budget, Audiobookshelf). They're excellent. But setting them up requires Docker knowledge, Linux experience, DNS configuration, SSL certificates, ongoing maintenance, and the willingness to debug things at 11pm.
+Self-hosted alternatives exist for every one of these (Immich, Jellyfin, Paperless-ngx, Audiobookshelf). They're excellent. But setting them up requires Docker knowledge, Linux experience, DNS configuration, SSL certificates, ongoing maintenance, and the willingness to debug things at 11pm.
 
 **The gap:** There is no product that gives normal people the benefits of self-hosting without any of the complexity. Every existing solution (Umbrel, CasaOS, Cloudron, YunoHost) is an app store for tinkerers. They sell autonomy and choice. Most people don't want choice — they want it to work.
 
@@ -26,11 +26,11 @@ The pitch to friends and family: **"I'll handle everything. You open the app, an
 
 ### What the user sees
 
-- A single app (web first, then Tauri desktop + mobile)
+- A web app (Tauri desktop + mobile to follow)
 - Sign in once with Clerk
-- Tabs: Photos, Media, Documents, Audiobooks, Budget
-- A universal **drop zone**: drag/drop or upload any file, it goes to the right place automatically
-- Optional: direct access to underlying services (e.g., full Paperless UI) for power users
+- Five tabs: Photos, Media, Documents, Audiobooks, Files
+- A universal **drop zone**: upload any file, confirm the suggested destination, done
+- Beautiful display and playback for photos, video, audio, and documents
 
 ### What the user never sees
 
@@ -41,36 +41,54 @@ The pitch to friends and family: **"I'll handle everything. You open the app, an
 - Backup schedules
 - Any of the words "Immich," "Jellyfin," or "Paperless"
 
+## Product Decisions (v1.0)
+
+| Decision | Answer |
+|----------|--------|
+| Target users | 5-10 friends and family, individuals only |
+| Account model | Individual private accounts across all services. No shared/household accounts in v1. |
+| Jellyfin media | Per-user libraries. Each user uploads their own content. No shared media library. |
+| Audiobook library | Per-user. No sharing between users. |
+| Photo sharing | No sharing in v1. Each user's photos are private. |
+| Drop zone behavior | Show MIME-based recommendation, ask user to confirm/edit destination. Improve over time toward seamless auto-routing. |
+| File catchall | Unclassified files stay in Steadfirm's own storage (Postgres metadata + local disk). No Nextcloud. |
+| Music | Handled by Jellyfin. No separate music service. |
+| Budgeting | Future roadmap. Not in v1. |
+| Power user access | Future roadmap. No direct service UI access in v1. |
+| Client platform | Web app only for v1. Tauri desktop + mobile in v2. |
+| Backups | Manual for POC. Proper backup strategy before accepting real user data. |
+| Uptime SLA | None for POC. Best-effort. |
+
 ## Architecture
 
 ### Service layer (not built by us)
 
 Single shared instances, multi-tenant by design:
 
-| Service | Purpose | Multi-user? |
-|---------|---------|-------------|
-| Immich | Photos & home videos | Yes — per-user libraries |
-| Jellyfin | Movies, TV, music | Yes — per-user accounts, libraries, parental controls |
-| Paperless-ngx | Documents, receipts, OCR | Yes — per-user ownership and permissions |
-| Audiobookshelf | Audiobooks | Yes — per-user accounts, progress tracking |
-| Actual Budget | Envelope budgeting | Per-file on shared sync server |
+| Service | Tab | Purpose | Multi-user? |
+|---------|-----|---------|-------------|
+| Immich | Photos | Photos & home videos | Yes — per-user libraries |
+| Jellyfin | Media | Movies, TV shows, music | Yes — per-user accounts and libraries |
+| Paperless-ngx | Documents | PDFs, receipts, scanned docs, OCR | Yes — per-user ownership and permissions |
+| Audiobookshelf | Audiobooks | Audiobook library and player | Yes — per-user accounts, progress tracking |
+| Steadfirm (itself) | Files | Unclassified uploads, review queue | N/A — built into the backend |
 
 ### Steadfirm layer (built by us)
 
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
-| `steadfirm-backend` | Rust / Axum | API gateway, auth, user provisioning, drop zone classification, service proxying |
-| `steadfirm-app` | Rust / Tauri 2 | Desktop + mobile client (single codebase) |
+| `steadfirm-backend` | Rust / Axum | API gateway, Clerk auth, user provisioning, drop zone classification, service proxying |
+| `steadfirm-app` | Rust / Tauri 2 | Desktop + mobile client (future — v2) |
 | `steadfirm-shared` | Rust library | Shared types, models, file classification logic |
-| `web/` | Tauri web view or standalone | Web frontend |
+| `web/` | TBD framework | Web frontend for v1 |
 | `infra/` | Docker Compose + Caddy | Service orchestration, reverse proxy |
 
 ### Container architecture
 
-~12 containers total (not per user):
+~10 containers total (not per user):
 
 ```
-Caddy (reverse proxy)
+Caddy (reverse proxy + TLS)
 Steadfirm Backend (Axum)
 Steadfirm Web Frontend
 Immich Server
@@ -78,7 +96,6 @@ Immich Machine Learning
 Jellyfin
 Paperless-ngx
 Audiobookshelf
-Actual Budget
 PostgreSQL (shared: steadfirm + immich + paperless databases)
 Redis (shared: immich + paperless)
 ```
@@ -87,67 +104,77 @@ All containers on a single Docker network. All service ports bound to localhost 
 
 ### Authentication flow
 
-1. User signs into Steadfirm via Clerk (web or app)
-2. Backend validates Clerk JWT
-3. Backend maps Clerk user to service-specific credentials
-4. All API calls to underlying services are made server-side with scoped credentials
-5. User never authenticates directly with underlying services
+1. User signs in via Clerk (web app)
+2. Client stores Clerk JWT
+3. Every API request includes the JWT
+4. Backend validates JWT against Clerk's JWKS public keys
+5. Backend looks up user in `service_connections` table
+6. Backend makes API calls to underlying services using that user's service-specific credentials
+7. User never authenticates directly with any underlying service
 
 ### User provisioning
 
 When a new user is added:
 
-1. Create Steadfirm user record in Postgres
-2. Create Immich account via admin API
-3. Create Jellyfin account via admin API
-4. Create Paperless account via admin API
-5. Create Audiobookshelf account via admin API
-6. Create Actual Budget file on sync server
-7. Store service credentials (encrypted) in Steadfirm database
+1. User signs up via Clerk
+2. Backend receives Clerk webhook (or manual trigger)
+3. Backend calls each service's admin API to create an account:
+   - Immich: `POST /api/admin/users`
+   - Jellyfin: `POST /Users/New`
+   - Paperless: `POST /api/users/`
+   - Audiobookshelf: `POST /api/users`
+4. Backend stores returned user IDs and API keys/tokens (encrypted) in the `service_connections` table
+5. User opens the app — everything works
 
 ### Drop zone — universal file routing
 
-The user drops files into Steadfirm. The backend classifies and routes:
+The user uploads files to Steadfirm. The backend classifies and presents a recommendation. The user confirms or edits the destination.
 
-| Detection | Routes to |
-|-----------|-----------|
-| JPEG, HEIC, PNG, RAW (EXIF data present) | Immich |
-| MP4, MOV (short duration, phone metadata) | Immich |
-| MP4, MKV (long duration, movie filename patterns, TMDb match) | Jellyfin |
-| MP3, FLAC, M4A (ID3/audio tags, short-form) | Jellyfin music library |
-| M4B, MP3 (long-form audio, author/title metadata) | Audiobookshelf |
-| PDF, DOCX, receipt patterns | Paperless-ngx |
-| CSV, OFX, QFX (financial headers) | Actual Budget import |
-| Everything else | Prompt user for classification; learn for next time |
+| Detection | Suggested destination |
+|-----------|----------------------|
+| JPEG, HEIC, PNG, RAW (image MIME types) | Photos (Immich) |
+| MP4, MOV (video, short duration, phone metadata) | Photos (Immich) |
+| MP4, MKV (video, long duration, movie-like filename) | Media (Jellyfin video library) |
+| MP3, FLAC, M4A (audio, short-form, ID3 tags) | Media (Jellyfin music library) |
+| M4B, MP3 (audio, long-form, author/title metadata) | Audiobooks (Audiobookshelf) |
+| PDF, DOCX, images of documents | Documents (Paperless-ngx) |
+| Anything else | Files (Steadfirm storage) |
 
-Classification pipeline: MIME detection -> metadata extraction -> heuristic rules -> confidence score -> route (or ask).
+v1 classification: MIME type + file extension + basic metadata heuristics. User always confirms. Over time, reduce confirmation friction as classification improves.
+
+**Jellyfin media ingestion note:** Movies and shows require correct folder structure and naming for Jellyfin to scrape metadata. The drop zone must handle TMDb/MusicBrainz lookup, rename, and placement into the correct library path within the user's Jellyfin media directory.
 
 ## Proof of Concept — Phase 1
 
 ### Goal
 
-Prove the unified experience works for 5-10 friends and family on a single dedicated server with NVMe storage. Free access during this phase.
+Prove the unified experience works for 5-10 friends and family on a single dedicated server. Free access during this phase.
 
 ### Scope
 
 **In scope:**
-- Web app with all service tabs (read + browse)
-- Clerk authentication
-- Backend API proxying to all services
-- Drop zone with file classification
+- Web app with five tabs: Photos, Media, Documents, Audiobooks, Files
+- Display and playback: photo grid + lightbox, video streaming, audio playback, document viewer
+- Clerk authentication (signup/signin)
+- Backend API proxying to all four services
+- Drop zone with MIME-based classification + user confirmation
+- Unclassified file storage in Steadfirm
 - Docker Compose infrastructure with all services running
 - Caddy reverse proxy with Cloudflare Tunnel
-- Direct service access URLs for power users
-- User provisioning (manual or semi-automated)
+- User provisioning (semi-automated via backend endpoint)
 
-**Out of scope (Phase 1):**
-- Tauri desktop/mobile app (web only first)
-- Automated backups (manual for now)
+**Out of scope (v1):**
+- Tauri desktop/mobile app
+- Automated backups
 - Billing / payments
-- SimpleFIN bank sync for Actual Budget (manual CSV import)
-- Advanced search across services
+- Budgeting (Actual Budget)
+- Bank sync (SimpleFIN)
 - Sharing between users
+- Household/combined accounts
+- Direct access to underlying service UIs
+- Advanced cross-service search
 - CI/CD pipeline
+- Camera roll auto-sync
 
 ### Hardware
 
@@ -161,28 +188,44 @@ Single dedicated server:
 ### Success criteria
 
 1. 5 real users actively using the service for 30 days
-2. Users can upload files via drop zone and they arrive in the correct service
-3. Users can browse their photos, watch media, read documents, track budget — all from one login
+2. Users can upload files via drop zone and files arrive in the correct service
+3. Users can browse photos, watch video, listen to music/audiobooks, read documents — all from one login
 4. No data cross-contamination between users
 5. Operator (Caleb) spends < 1 hour/week on maintenance
 
-## Phase 2 — After POC validation
+## Future Roadmap
 
-- Tauri app (desktop + mobile from one codebase)
-- Automated user provisioning via backend API
-- Automated backups to Backblaze B2
-- SimpleFIN integration for bank transaction sync
+### Phase 2 — Native apps and reliability
+
+- Tauri 2 app (desktop + mobile from one codebase)
 - Camera roll auto-sync from mobile
+- Automated backups to Backblaze B2
+- Automated user provisioning via Clerk webhooks
 - Monitoring and alerting (Prometheus + Grafana)
-- $10/month billing via Clerk payments or Stripe
+- Improved drop zone classification (reduce confirmation prompts)
 
-## Phase 3 — Growth
+### Phase 3 — Monetization and growth
 
+- $10/month billing via Stripe or Clerk payments
 - Onboard additional friend/family groups
 - Per-user storage quotas and usage tracking
+- Uptime commitment and proper SLA
+
+### Phase 4 — Expanded services
+
+- Budgeting via Actual Budget
+- SimpleFIN bank sync integration
+- Household/combined accounts with shared libraries
+- Sharing between users (photos, media, documents)
+- Additional services: Vaultwarden (passwords), Kavita (ebooks)
+- Power user mode: direct access to underlying service UIs
+
+### Phase 5 — Scale
+
 - Hybrid hosting (heavy storage on-prem, lightweight services on VPS)
-- Additional service integrations (Vaultwarden for passwords, Kavita for ebooks)
+- Multi-server support
 - Polished onboarding flow
+- Public-facing marketing and sign-up
 
 ## Business model
 
@@ -193,23 +236,22 @@ Single dedicated server:
 | Dedicated server hardware (one-time) | ~$500-800 |
 | Electricity | ~$10-15/month |
 | Cloudflare Tunnel | Free |
-| Backblaze B2 (backups, ~2TB) | ~$10/month |
-| SimpleFIN (bank sync) | ~$1.50/month per user |
+| Backblaze B2 (backups, ~2TB, Phase 2) | ~$10/month |
 | Clerk (auth) | Free tier covers < 10k MAU |
 | steadfirm.io domain | ~$30/year |
-| **Total operating cost** | **~$25-30/month** |
+| **Total operating cost (POC)** | **~$15/month** |
 
-Revenue at 10 users x $10/month = $100/month. Covers costs with margin from day one.
+Revenue at 10 users x $10/month = $100/month (Phase 3). Covers costs with margin from day one of billing.
 
 ## Tech stack
 
 | Layer | Choice | Why |
 |-------|--------|-----|
-| Backend language | Rust | Performance, safety, single binary deployment, you know it |
+| Backend language | Rust | Performance, safety, single binary deployment |
 | Backend framework | Axum | Tokio-native, tower middleware, best Rust web framework |
-| Client framework | Tauri 2 | Desktop + mobile from one Rust codebase, web view for UI |
-| Auth | Clerk | Already working from Pavo, handles signup/signin/JWT |
-| Database | PostgreSQL | Shared with Immich and Paperless, proven |
+| Client framework | Tauri 2 (Phase 2) | Desktop + mobile from one Rust codebase |
+| Auth | Clerk | Proven, handles signup/signin/JWT, already used in Pavo prototype |
+| Database | PostgreSQL | Shared with Immich and Paperless, proven at scale |
 | Cache | Redis | Shared with Immich and Paperless |
 | Reverse proxy | Caddy | Automatic HTTPS, simple config, lighter than Traefik |
 | Orchestration | Docker Compose | Simple, sufficient at this scale, no K8s needed |
@@ -219,8 +261,8 @@ Revenue at 10 users x $10/month = $100/month. Covers costs with margin from day 
 
 | Project | What they did wrong | How Steadfirm avoids it |
 |---------|-------------------|----------------------|
-| Sandstorm | Built infrastructure (sandboxing), not a product. Took VC, couldn't monetize. | We build a skin over existing services. No VC. Charge friends $10. |
-| Umbrel / CasaOS | App store for tinkerers — too many choices, requires maintenance | We make all the choices. Users see one app. |
+| Sandstorm | Built infrastructure (sandboxing), not a product. Took VC, couldn't monetize. Dependency chain rotted. | We build a skin over existing services. No VC. Each service is independently maintained by its community. |
+| Umbrel / CasaOS | App store for tinkerers — too many choices, requires user maintenance | We make all the choices. Users see one app, not an app store. |
 | Cloudron | Sysadmin dashboard — users still configure services | Zero configuration for end users |
 | Helm | Sold hardware, killed by margins | Software-only, runs on any hardware |
 | FreedomBox | List of apps, no unified UX, feels like 2012 | Single unified interface, modern design |
@@ -228,16 +270,16 @@ Revenue at 10 users x $10/month = $100/month. Covers costs with margin from day 
 ## Non-goals
 
 - We are not building a platform for strangers to deploy apps
-- We are not building an app store
-- We are not giving users infrastructure choices
+- We are not building an app store or marketplace
+- We are not giving users infrastructure choices or configuration
 - We are not competing with iCloud/Google at scale
 - We are not seeking venture funding
-- We are not building our own photo/media/document engines — we use the best ones that exist
+- We are not building our own photo/media/document/audio engines
+- We are not integrating Nextcloud (too heavy, does too much, hard to maintain)
 
 ## Open questions
 
-1. **Web frontend framework** — Tauri web view uses standard HTML/CSS/JS. Leptos (Rust WASM)? Or a JS framework for the web layer?
-2. **Mobile camera sync** — Tauri 2 mobile is young. May need native photo access plugins. Evaluate maturity.
-3. **Actual Budget API** — Actual's API is less documented than the others. May need to contribute upstream or work with their sync protocol directly.
-4. **Apple Card** — SimpleFIN coverage for Apple Card is spotty. May remain a manual CSV import. Acceptable for POC.
-5. **Media ingestion for Jellyfin** — Movies/shows need correct folder structure and naming for Jellyfin to scrape metadata. The drop zone needs to handle this (TMDb lookup + rename + place in correct library path).
+1. **Web frontend framework** — TBD. Options: Leptos (Rust WASM, full-stack), a JS framework in the Tauri web view, or standalone React/Svelte. Decision needed before Phase 1 frontend work begins.
+2. **Media ingestion pipeline** — Jellyfin needs specific folder structures and naming. How sophisticated does the TMDb/MusicBrainz lookup need to be for v1? Minimum viable: rename file, place in user's library folder, let Jellyfin scan.
+3. **File storage backend** — Unclassified files in the "Files" tab: local disk with Postgres metadata is simplest. Is that sufficient, or do we want S3-compatible storage (MinIO) from the start?
+4. **Mobile camera sync feasibility** — Tauri 2 mobile is young. Need to evaluate whether photo library access plugins are mature enough for Phase 2, or if a native thin client is needed.

@@ -12,5 +12,5 @@ pub fn api_router() -> Router {
         .nest("/media", proxy::media_router())
         .nest("/documents", proxy::documents_router())
         .nest("/audiobooks", proxy::audiobooks_router())
-        .nest("/budget", proxy::budget_router())
+        .nest("/files", proxy::files_router())
 }

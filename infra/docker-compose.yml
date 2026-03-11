@@ -155,20 +155,6 @@ services:
       - steadfirm
 
   # ──────────────────────────────────────────────
-  # Budgeting — Actual Budget
-  # ──────────────────────────────────────────────
-
-  actual:
-    image: actualbudget/actual-server:latest
-    restart: unless-stopped
-    volumes:
-      - actual_data:/data
-    ports:
-      - "127.0.0.1:5006:5006"
-    networks:
-      - steadfirm
-
-  # ──────────────────────────────────────────────
   # Reverse Proxy — Caddy
   # ──────────────────────────────────────────────
 
@@ -187,7 +173,6 @@ services:
       - jellyfin
       - paperless
       - audiobookshelf
-      - actual
     networks:
       - steadfirm
 
@@ -205,7 +190,7 @@ volumes:
   audiobooks_library:
   audiobookshelf_config:
   audiobookshelf_metadata:
-  actual_data:
+  steadfirm_files:
   caddy_data:
   caddy_config:
 

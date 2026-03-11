@@ -2,7 +2,7 @@
 
 ## Overview
 
-Steadfirm is a unified personal cloud platform. One app, one login for photos, media, documents, audiobooks, and budgeting — backed by self-hosted open-source services (Immich, Jellyfin, Paperless-ngx, Audiobookshelf, Actual Budget).
+Steadfirm is a unified personal cloud platform. One app, one login for photos, media, documents, audiobooks, and general file storage — backed by self-hosted open-source services (Immich, Jellyfin, Paperless-ngx, Audiobookshelf). Auth via Clerk. See PRD.md for full product context.
 
 ## Project Structure
 
@@ -59,7 +59,8 @@ cd infra && docker compose down
 2. **Multi-tenant on shared instances** — one Immich, one Jellyfin, many users
 3. **API gateway pattern** — backend proxies all requests to underlying services, injecting user-scoped credentials
 4. **Drop zone classification** — files uploaded to Steadfirm are auto-routed to the correct service based on MIME type + metadata
-5. **Direct access available** — power users can access underlying service UIs via subpaths (e.g., /immich, /jellyfin)
+5. **Files catchall** — unclassified uploads stay in Steadfirm's own storage (no Nextcloud)
+6. **Direct service access is a future roadmap item** — not in v1
 
 ## Git Conventions
 
