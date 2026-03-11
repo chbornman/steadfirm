@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { Layout, Dropdown, Avatar, Grid } from 'antd';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -41,14 +41,13 @@ const navItems = [
   { key: '/documents', label: 'Documents', icon: FileText },
   { key: '/audiobooks', label: 'Audiobooks', icon: Headphones },
   { key: '/files', label: 'Files', icon: Folder },
-  { key: '/settings', label: 'Settings', icon: Gear },
 ];
 
 /** Shared spring config for the sliding pill indicator */
 const pillSpring = { type: 'spring', stiffness: 500, damping: 35 } as const;
 
 /** Tabs that are always shown regardless of visibility settings. */
-const alwaysVisibleKeys = new Set(['/settings']);
+const alwaysVisibleKeys = new Set<string>();
 
 export function AppLayout({ children }: AppLayoutProps) {
   const navigate = useNavigate();
@@ -69,6 +68,16 @@ export function AppLayout({ children }: AppLayoutProps) {
   const showAudiobook = hasAudiobook && !showMusic;
 
   const ThemeIcon = mode === 'dark' ? Moon : mode === 'light' ? Sun : Desktop;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const keepOpenRef = useRef(false);
+
+  const handleMenuOpenChange = useCallback((open: boolean) => {
+    if (!open && keepOpenRef.current) {
+      keepOpenRef.current = false;
+      return;
+    }
+    setMenuOpen(open);
+  }, []);
 
   const showAllTabs = usePreferencesStore((s) => s.showAllTabs);
   const hiddenTabs = usePreferencesStore((s) => s.hiddenTabs);
@@ -89,7 +98,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       (item) =>
         currentPath === item.key ||
         (item.matchPrefix && currentPath.startsWith(item.matchPrefix)),
-    )?.key ?? '/photos';
+    )?.key ?? null;
 
   const handleNav = (path: string) => {
     void navigate({ to: path });
@@ -110,9 +119,9 @@ export function AppLayout({ children }: AppLayoutProps) {
     },
     {
       key: 'theme',
-      label: `Theme: ${mode}`,
+      label: `Theme: ${mode.charAt(0).toUpperCase() + mode.slice(1)}`,
       icon: <ThemeIcon size={16} />,
-      onClick: cycleMode,
+      onClick: () => { keepOpenRef.current = true; cycleMode(); },
     },
     {
       type: 'divider' as const,
@@ -198,6 +207,9 @@ export function AppLayout({ children }: AppLayoutProps) {
                       {isActive && (
                         <motion.span
                           layoutId="nav-pill"
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.9 }}
                           transition={pillSpring}
                           style={{
                             position: 'absolute',
@@ -242,7 +254,12 @@ export function AppLayout({ children }: AppLayoutProps) {
               Upload
             </button>
 
-            <Dropdown menu={{ items: userMenuItems }} trigger={['click']}>
+            <Dropdown
+              open={menuOpen}
+              onOpenChange={handleMenuOpenChange}
+              menu={{ items: userMenuItems, style: { minWidth: 180 } }}
+              trigger={['click']}
+            >
               <Avatar
                 size={32}
                 icon={<User size={18} />}
@@ -272,7 +289,12 @@ export function AppLayout({ children }: AppLayoutProps) {
           }}
         >
           <Wordmark size={22} onClick={() => handleNav('/photos')} />
-          <Dropdown menu={{ items: userMenuItems }} trigger={['click']}>
+          <Dropdown
+            open={menuOpen}
+            onOpenChange={handleMenuOpenChange}
+            menu={{ items: userMenuItems, style: { minWidth: 180 } }}
+            trigger={['click']}
+          >
             <Avatar
               size={32}
               icon={<User size={18} />}
