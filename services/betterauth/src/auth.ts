@@ -1,10 +1,12 @@
 import { betterAuth } from "better-auth";
+import { Pool } from "pg";
+
+const pool = new Pool({
+  connectionString: process.env.BETTER_AUTH_DATABASE!,
+});
 
 export const auth = betterAuth({
-  database: {
-    type: "postgres",
-    url: process.env.BETTER_AUTH_DATABASE!,
-  },
+  database: pool,
   secret: process.env.BETTER_AUTH_SECRET!,
   baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3002",
   basePath: "/api/auth",

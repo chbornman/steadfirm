@@ -473,14 +473,14 @@ For movies/shows, the drop zone does a TMDb lookup by filename to get the correc
 
 | Service | Image | Port (localhost) | Shares |
 |---------|-------|-----------------|--------|
-| postgres | tensorchord/pgvecto-rs:pg16 | 5432 | DBs: steadfirm, immich, paperless |
-| redis | redis:7-alpine | — | Used by: immich, paperless |
-| immich-server | ghcr.io/immich-app/immich-server:release | 2283 | |
-| immich-ml | ghcr.io/immich-app/immich-machine-learning:release | — | |
-| jellyfin | jellyfin/jellyfin:latest | 8096 | |
-| paperless | ghcr.io/paperless-ngx/paperless-ngx:latest | 8000 | |
-| audiobookshelf | ghcr.io/advplyr/audiobookshelf:latest | 13378 | |
-| caddy | caddy:2-alpine | 80, 443 | |
+| postgres | ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0 | 5432 | DBs: steadfirm, immich, paperless |
+| valkey | valkey/valkey:9.0.3-alpine | — | Used by: immich, paperless |
+| immich-server | ghcr.io/immich-app/immich-server:v2.5.6 | 2283 | |
+| immich-ml | ghcr.io/immich-app/immich-machine-learning:v2.5.6 | — | |
+| jellyfin | jellyfin/jellyfin:10.11.6 | 8096 | |
+| paperless | ghcr.io/paperless-ngx/paperless-ngx:2.20.10 | 8000 | |
+| audiobookshelf | ghcr.io/advplyr/audiobookshelf:2.32.1 | 13378 | |
+| caddy | caddy:2.11.2-alpine | 80, 443 | |
 
 ### Storage layout
 

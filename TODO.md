@@ -85,9 +85,9 @@ The shared instance is architecturally fine — these services have low write vo
 
 ## Container Image Pinning
 
-**Problem:** `jellyfin:latest`, `paperless-ngx:latest`, and `audiobookshelf:latest` use floating tags. A `podman-compose pull` could introduce breaking changes.
+**Rule: Never use `latest` or other floating tags (e.g. `2-alpine`) for production deployments.** Every image must be pinned to a specific version tag (e.g. `v2.5.6`, `10.11.6`). Rolling tags like `latest` can silently introduce breaking changes on any `docker compose pull`.
 
-**Solution:** Pin all images to specific versions (like we already do for Immich). Update versions intentionally with testing.
+**Current status:** All images are now pinned to specific versions in `docker-compose.yml`. When upgrading, bump versions intentionally with testing — never rely on floating tags to pick up updates.
 
 ---
 
@@ -97,7 +97,7 @@ The shared instance is architecturally fine — these services have low write vo
 
 **Solution (phased):**
 1. **Immediate:** `.env` is gitignored, generated per-environment — acceptable for POC
-2. **Phase 2:** Podman secrets (`podman secret create`) or SOPS-encrypted env files
+2. **Phase 2:** Docker secrets (`docker secret create`) or SOPS-encrypted env files
 3. **Phase 3:** HashiCorp Vault or similar if multi-server
 
 ---

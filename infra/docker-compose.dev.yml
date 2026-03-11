@@ -1,0 +1,43 @@
+## Dev override — run only infrastructure containers.
+## betterauth, steadfirm-backend, and caddy are excluded;
+## run them locally in terminal windows instead.
+##
+## Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+##
+## Then in separate terminals:
+##   cd services/betterauth && bun run dev          # port 3002
+##   cargo run -p steadfirm-backend                 # port 3001
+##
+## Environment variables for local processes:
+##   DATABASE_URL=postgresql://steadfirm:password@localhost:18432/steadfirm
+##   BETTERAUTH_URL=http://localhost:3002
+##   IMMICH_URL=http://localhost:18283
+##   JELLYFIN_URL=http://localhost:18096
+##   PAPERLESS_URL=http://localhost:18000
+##   AUDIOBOOKSHELF_URL=http://localhost:18378
+
+services:
+  # Disable containers we run locally
+  betterauth:
+    profiles: [prod]
+  steadfirm-backend:
+    profiles: [prod]
+  caddy:
+    profiles: [prod]
+
+  # Expose underlying services to the host for local dev
+  immich-server:
+    ports:
+      - "127.0.0.1:18283:2283"
+
+  jellyfin:
+    ports:
+      - "127.0.0.1:18096:8096"
+
+  paperless:
+    ports:
+      - "127.0.0.1:18000:8000"
+
+  audiobookshelf:
+    ports:
+      - "127.0.0.1:18378:80"

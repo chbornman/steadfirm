@@ -1,7 +1,7 @@
 ## Steadfirm Infrastructure
 ## Underlying self-hosted services that Steadfirm orchestrates.
-## All services share a single Postgres instance and a common Podman network.
-## Usage: podman-compose up -d
+## All services share a single Postgres instance and a common Docker network.
+## Usage: docker compose up -d
 
 services:
   # ──────────────────────────────────────────────
@@ -9,17 +9,19 @@ services:
   # ──────────────────────────────────────────────
 
   postgres:
-    image: docker.io/tensorchord/pgvecto-rs:pg16-v0.2.1
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER:-steadfirm}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
       POSTGRES_DB: steadfirm
+      POSTGRES_INITDB_ARGS: '--data-checksums'
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-databases.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "127.0.0.1:18432:5432"
+    shm_size: 128mb
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-steadfirm}"]
       interval: 10s
@@ -28,15 +30,15 @@ services:
     networks:
       - steadfirm
 
-  redis:
-    image: docker.io/redis:7-alpine
+  valkey:
+    image: docker.io/valkey/valkey:9.0.3-alpine
     restart: unless-stopped
     volumes:
-      - redis_data:/data
+      - valkey_data:/data
     ports:
       - "127.0.0.1:18379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "valkey-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -94,7 +96,7 @@ services:
         condition: service_healthy
       betterauth:
         condition: service_healthy
-      redis:
+      valkey:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
@@ -110,27 +112,28 @@ services:
   # ──────────────────────────────────────────────
 
   immich-server:
-    image: ghcr.io/immich-app/immich-server:v1.132.3
+    image: ghcr.io/immich-app/immich-server:v2.5.6
     restart: unless-stopped
     environment:
       DB_HOSTNAME: postgres
       DB_USERNAME: ${DB_USER:-steadfirm}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_DATABASE_NAME: immich
-      REDIS_HOSTNAME: redis
+      REDIS_HOSTNAME: valkey
     volumes:
       - immich_upload:/usr/src/app/upload
+      - /etc/localtime:/etc/localtime:ro
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      valkey:
         condition: service_healthy
     # No host ports — only reachable by steadfirm-backend via internal network
     networks:
       - steadfirm
 
   immich-machine-learning:
-    image: ghcr.io/immich-app/immich-machine-learning:v1.132.3
+    image: ghcr.io/immich-app/immich-machine-learning:v2.5.6
     restart: unless-stopped
     volumes:
       - immich_ml_cache:/cache
@@ -142,7 +145,7 @@ services:
   # ──────────────────────────────────────────────
 
   jellyfin:
-    image: docker.io/jellyfin/jellyfin:latest
+    image: docker.io/jellyfin/jellyfin:10.11.6
     restart: unless-stopped
     volumes:
       - jellyfin_config:/config
@@ -157,14 +160,14 @@ services:
   # ──────────────────────────────────────────────
 
   paperless:
-    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    image: ghcr.io/paperless-ngx/paperless-ngx:2.20.10
     restart: unless-stopped
     environment:
       PAPERLESS_DBHOST: postgres
       PAPERLESS_DBUSER: ${DB_USER:-steadfirm}
       PAPERLESS_DBPASS: ${DB_PASSWORD}
       PAPERLESS_DBNAME: paperless
-      PAPERLESS_REDIS: redis://redis:6379
+      PAPERLESS_REDIS: redis://valkey:6379
       PAPERLESS_OCR_LANGUAGE: eng
       PAPERLESS_URL: http://paperless:8000
     volumes:
@@ -174,7 +177,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      valkey:
         condition: service_healthy
     # No host ports — only reachable by steadfirm-backend via internal network
     networks:
@@ -185,7 +188,7 @@ services:
   # ──────────────────────────────────────────────
 
   audiobookshelf:
-    image: ghcr.io/advplyr/audiobookshelf:latest
+    image: ghcr.io/advplyr/audiobookshelf:2.32.1
     restart: unless-stopped
     volumes:
       - audiobooks_library:/audiobooks
@@ -200,7 +203,7 @@ services:
   # ──────────────────────────────────────────────
 
   caddy:
-    image: docker.io/caddy:2-alpine
+    image: docker.io/caddy:2.11.2-alpine
     restart: unless-stopped
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
@@ -219,7 +222,7 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:
+  valkey_data:
   immich_upload:
   immich_ml_cache:
   jellyfin_config:
