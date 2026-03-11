@@ -3,6 +3,7 @@ import { RouterProvider } from '@tanstack/react-router';
 import { darkTheme, lightTheme } from '@steadfirm/theme';
 import { useThemeStore } from '@/stores/theme';
 import { router } from '@/router';
+import { DebugPanel } from '@/components/DebugPanel';
 
 export function ThemedApp() {
   const resolved = useThemeStore((s) => s.resolved);
@@ -12,6 +13,7 @@ export function ThemedApp() {
     <ConfigProvider theme={themeConfig}>
       <AntApp>
         <RouterProvider router={router} />
+        <DebugPanel />
       </AntApp>
     </ConfigProvider>
   );

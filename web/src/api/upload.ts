@@ -12,14 +12,18 @@ export async function uploadFile(
   file: File,
   service: ServiceName,
   onProgress?: (percent: number) => void,
+  relativePath?: string,
 ): Promise<UploadFileResult> {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('service', service);
   formData.append('filename', file.name);
+  if (relativePath) {
+    formData.append('relative_path', relativePath);
+  }
 
   const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-  log.info('upload starting', { filename: file.name, service, sizeMB, type: file.type });
+  log.info('upload starting', { filename: file.name, service, sizeMB, type: file.type, relativePath });
 
   // Use XMLHttpRequest for progress tracking
   return new Promise<UploadFileResult>((resolve, reject) => {

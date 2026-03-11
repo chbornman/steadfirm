@@ -49,6 +49,19 @@ pub struct Config {
 
     // Provisioning
     pub provision_max_retries: u32,
+
+    // AI / LLM classification
+    /// Which LLM provider to use: "anthropic" or "openai" (OpenAI-compatible,
+    /// including Ollama / vLLM / llama.cpp).
+    pub llm_provider: String,
+    /// Model name to use. Empty string means provider default.
+    pub llm_model: String,
+    /// Anthropic API key (required when llm_provider == "anthropic").
+    pub anthropic_api_key: String,
+    /// Base URL for a local OpenAI-compatible server (e.g. Ollama).
+    pub local_llm_base_url: String,
+    /// API key for the local server (many don't need one).
+    pub local_llm_api_key: String,
 }
 
 impl Config {
@@ -97,6 +110,12 @@ impl Config {
             webhook_secret: env_required("WEBHOOK_SECRET")?,
 
             provision_max_retries: env_or("PROVISION_MAX_RETRIES", "3").parse()?,
+
+            llm_provider: env_or("LLM_PROVIDER", "anthropic"),
+            llm_model: env_or("LLM_MODEL", ""),
+            anthropic_api_key: env_or("ANTHROPIC_API_KEY", ""),
+            local_llm_base_url: env_or("LOCAL_LLM_BASE_URL", "http://localhost:11434"),
+            local_llm_api_key: env_or("LOCAL_LLM_API_KEY", "not-needed"),
         })
     }
 }

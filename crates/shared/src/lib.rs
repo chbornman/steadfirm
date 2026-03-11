@@ -1,3 +1,4 @@
+pub mod classify;
 pub mod models;
 pub mod services;
 

@@ -28,6 +28,15 @@ export type {
 
 export type { User, Session, UserProfile } from './types/auth';
 
+export type {
+  ClassifyRequest,
+  ClassifyResponse,
+  ClassifyDebugInfo,
+  FileEntry,
+  FileClassificationResult,
+  AudiobookGroup,
+} from './types/classify';
+
 export {
   SERVICES,
   SERVICE_LABELS,

@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { Layout, Dropdown, Avatar, Grid } from 'antd';
-import { motion, AnimatePresence } from 'framer-motion';
+import { LayoutGroup, motion, AnimatePresence } from 'framer-motion';
+import type { IconWeight } from '@phosphor-icons/react';
 import {
   ImagesSquare,
   FilmSlate,
@@ -24,6 +25,7 @@ import { signOut } from '@/hooks/useAuth';
 import { useMusicPlayerStore } from '@/stores/music-player';
 import { useAudiobookPlayerStore } from '@/stores/audiobook-player';
 import { usePreferencesStore } from '@/stores/preferences';
+import { useDebugStore, DEBUG_PANEL_WIDTH } from '@/stores/debug';
 import type { TabKey } from '@/stores/preferences';
 import { MusicPlayerManager } from '@/components/MusicPlayerManager';
 import { AudiobookPlayerManager } from '@/components/AudiobookPlayerManager';
@@ -34,7 +36,14 @@ interface AppLayoutProps {
   children: ReactNode;
 }
 
-const navItems = [
+interface NavItem {
+  key: string;
+  label: string;
+  icon: React.ComponentType<{ size: number; weight: IconWeight }>;
+  matchPrefix?: string;
+}
+
+const navItems: NavItem[] = [
   { key: '/photos', label: 'Personal Media', icon: ImagesSquare },
   { key: '/media/movies', label: 'Film & TV', icon: FilmSlate, matchPrefix: '/media' },
   { key: '/music', label: 'Music', icon: MusicNote },
@@ -43,11 +52,91 @@ const navItems = [
   { key: '/files', label: 'Files', icon: Folder },
 ];
 
-/** Shared spring config for the sliding pill indicator */
-const pillSpring = { type: 'spring', stiffness: 500, damping: 35 } as const;
+/** Shared spring config for animated transitions */
+const navSpring = { type: 'spring', stiffness: 400, damping: 30 } as const;
 
 /** Tabs that are always shown regardless of visibility settings. */
 const alwaysVisibleKeys = new Set<string>();
+
+// ─── Shared NavTab component ─────────────────────────────────────────
+
+interface NavTabProps {
+  item: NavItem;
+  isActive: boolean;
+  layoutId: string;
+  onClick: () => void;
+  iconSize?: number;
+}
+
+/** A single nav tab that expands to show its label when active. */
+function NavTab({ item, isActive, layoutId, onClick, iconSize = 18 }: NavTabProps) {
+  const Icon = item.icon;
+  return (
+    <motion.button
+      layout
+      onClick={onClick}
+      transition={navSpring}
+      style={{
+        position: 'relative',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: isActive ? 7 : 0,
+        padding: isActive ? '7px 16px' : '7px 12px',
+        border: 'none',
+        background: 'transparent',
+        cursor: 'pointer',
+        color: isActive ? '#fff' : 'var(--ant-color-text-secondary)',
+        fontSize: 13,
+        fontWeight: isActive ? 600 : 400,
+        fontFamily: 'inherit',
+        borderRadius: 9999,
+        zIndex: 1,
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Animated pill background */}
+      <AnimatePresence>
+        {isActive && (
+          <motion.span
+            layoutId={layoutId}
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.85 }}
+            transition={navSpring}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              borderRadius: 9999,
+              background: cssVar.accent,
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+              zIndex: -1,
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      <motion.span layout="position" style={{ display: 'flex', flexShrink: 0 }}>
+        <Icon size={iconSize} weight={isActive ? 'fill' : 'regular'} />
+      </motion.span>
+
+      <AnimatePresence initial={false}>
+        {isActive && (
+          <motion.span
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: 'auto', opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={{ ...navSpring, opacity: { duration: 0.15 } }}
+            style={{ overflow: 'hidden', display: 'inline-block' }}
+          >
+            {item.label}
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </motion.button>
+  );
+}
 
 export function AppLayout({ children }: AppLayoutProps) {
   const navigate = useNavigate();
@@ -66,6 +155,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   // Only one player bar visible — whichever was most recently started/resumed wins
   const showMusic = hasMusic && (!hasAudiobook || musicLastActive >= audiobookLastActive);
   const showAudiobook = hasAudiobook && !showMusic;
+
+  const debugVisible = useDebugStore((s) => s.visible);
+  const debugMargin = !import.meta.env.PROD && debugVisible ? DEBUG_PANEL_WIDTH : 0;
 
   const ThemeIcon = mode === 'dark' ? Moon : mode === 'light' ? Sun : Desktop;
   const [menuOpen, setMenuOpen] = useState(false);
@@ -136,7 +228,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   ];
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ minHeight: '100vh', marginRight: debugMargin, transition: 'margin-right 0.25s ease' }}>
       {/* Desktop header */}
       {!isMobile && (
         <Layout.Header
@@ -144,7 +236,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             position: 'fixed',
             top: 0,
             left: 0,
-            right: 0,
+            right: debugMargin,
             zIndex: 100,
             height: 56,
             display: 'flex',
@@ -152,6 +244,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             padding: '0 24px',
             backdropFilter: 'blur(12px)',
             borderBottom: '1px solid var(--ant-color-border)',
+            transition: 'right 0.25s ease',
           }}
         >
           {/* Logo — left pinned */}
@@ -163,72 +256,29 @@ export function AppLayout({ children }: AppLayoutProps) {
 
           {/* Centered floating pill nav */}
           <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
-            <nav
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 2,
-                padding: 4,
-                borderRadius: 9999,
-                background: 'var(--ant-color-fill-quaternary)',
-                position: 'relative',
-              }}
-            >
-              {visibleNavItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = activeKey === item.key;
-                return (
-                  <button
+            <LayoutGroup id="desktop-nav">
+              <nav
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 2,
+                  padding: 4,
+                  borderRadius: 9999,
+                  background: 'var(--ant-color-fill-quaternary)',
+                }}
+              >
+                {visibleNavItems.map((item) => (
+                  <NavTab
                     key={item.key}
+                    item={item}
+                    isActive={activeKey === item.key}
+                    layoutId="desktop-pill"
                     onClick={() => handleNav(item.key)}
-                    style={{
-                      position: 'relative',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      padding: '6px 14px',
-                      border: 'none',
-                      background: 'transparent',
-                      cursor: 'pointer',
-                      color: isActive
-                        ? '#fff'
-                        : 'var(--ant-color-text-secondary)',
-                      fontWeight: isActive ? 600 : 400,
-                      fontSize: 13,
-                      fontFamily: 'inherit',
-                      borderRadius: 9999,
-                      zIndex: 1,
-                      transition: 'color 0.2s ease',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {/* Animated pill background */}
-                    <AnimatePresence>
-                      {isActive && (
-                        <motion.span
-                          layoutId="nav-pill"
-                          initial={{ opacity: 0, scale: 0.9 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.9 }}
-                          transition={pillSpring}
-                          style={{
-                            position: 'absolute',
-                            inset: 0,
-                            borderRadius: 9999,
-                            background: cssVar.accent,
-                            boxShadow:
-                              '0 2px 8px rgba(0, 0, 0, 0.15)',
-                            zIndex: -1,
-                          }}
-                        />
-                      )}
-                    </AnimatePresence>
-                    <Icon size={16} weight={isActive ? 'fill' : 'regular'} />
-                    {item.label}
-                  </button>
-                );
-              })}
-            </nav>
+                    iconSize={16}
+                  />
+                ))}
+              </nav>
+            </LayoutGroup>
           </div>
 
           {/* Right side */}
@@ -277,7 +327,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             position: 'fixed',
             top: 0,
             left: 0,
-            right: 0,
+            right: debugMargin,
             zIndex: 100,
             height: 56,
             display: 'flex',
@@ -286,6 +336,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             padding: '0 16px',
             backdropFilter: 'blur(12px)',
             borderBottom: '1px solid var(--ant-color-border)',
+            transition: 'right 0.25s ease',
           }}
         >
           <Wordmark size={22} onClick={() => handleNav('/photos')} />
@@ -321,68 +372,43 @@ export function AppLayout({ children }: AppLayoutProps) {
 
       {/* Mobile bottom tab bar */}
       {isMobile && (
-        <nav
-          style={{
-            position: 'fixed',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            zIndex: 100,
-            height: 56,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-around',
-            background: 'var(--ant-color-bg-container)',
-            borderTop: '1px solid var(--ant-color-border)',
-          }}
-        >
-          {[...visibleNavItems, { key: '/upload', label: 'Upload', icon: CloudArrowUp }].map((item) => {
-            const Icon = item.icon;
-            const isActive =
-              'matchPrefix' in item && item.matchPrefix
-                ? currentPath.startsWith(item.matchPrefix)
-                : currentPath === item.key || currentPath.startsWith(item.key);
-            return (
-              <button
-                key={item.key}
-                onClick={() => handleNav(item.key)}
-                style={{
-                  position: 'relative',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 2,
-                  padding: 4,
-                  border: 'none',
-                  background: 'transparent',
-                  cursor: 'pointer',
-                  color: isActive ? cssVar.accent : 'var(--ant-color-text-secondary)',
-                  fontSize: 10,
-                  fontFamily: 'inherit',
-                  transition: 'color 0.2s ease',
-                }}
-              >
-                {/* Active dot indicator for mobile */}
-                {isActive && (
-                  <motion.span
-                    layoutId="mobile-nav-dot"
-                    transition={pillSpring}
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      width: 4,
-                      height: 4,
-                      borderRadius: 9999,
-                      background: cssVar.accent,
-                    }}
-                  />
-                )}
-                <Icon size={22} weight={isActive ? 'fill' : 'regular'} />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
+        <LayoutGroup id="mobile-nav">
+          <nav
+            style={{
+              position: 'fixed',
+              bottom: 0,
+              left: 0,
+              right: debugMargin,
+              zIndex: 100,
+              height: 56,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+              padding: '0 12px',
+              background: 'var(--ant-color-bg-container)',
+              borderTop: '1px solid var(--ant-color-border)',
+              transition: 'right 0.25s ease',
+            }}
+          >
+            {[...visibleNavItems, { key: '/upload', label: 'Upload', icon: CloudArrowUp }].map((item) => {
+              const isActive =
+                'matchPrefix' in item && item.matchPrefix
+                  ? currentPath.startsWith(item.matchPrefix)
+                  : currentPath === item.key || currentPath.startsWith(item.key);
+              return (
+                <NavTab
+                  key={item.key}
+                  item={item}
+                  isActive={isActive}
+                  layoutId="mobile-pill"
+                  onClick={() => handleNav(item.key)}
+                  iconSize={20}
+                />
+              );
+            })}
+          </nav>
+        </LayoutGroup>
       )}
     </Layout>
   );

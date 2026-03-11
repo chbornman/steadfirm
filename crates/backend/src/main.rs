@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use axum::{extract::DefaultBodyLimit, middleware as axum_mw, routing::get, Json, Router};
 use serde_json::{json, Value};
@@ -25,6 +26,7 @@ pub struct AppState {
     pub db: sqlx::PgPool,
     pub config: config::Config,
     pub http: reqwest::Client,
+    pub ai: Arc<services::AiClassifier>,
 }
 
 #[tokio::main]
@@ -70,10 +72,18 @@ async fn main() -> anyhow::Result<()> {
     // Ensure files storage directory exists
     std::fs::create_dir_all(&config.files_storage_path)?;
 
+    let ai = services::AiClassifier::from_config(&config);
+    tracing::info!(
+        ai_enabled = ai.is_enabled(),
+        provider = %config.llm_provider,
+        "AI classifier initialized"
+    );
+
     let state = AppState {
         db: pool,
         config: config.clone(),
         http,
+        ai: Arc::new(ai),
     };
 
     let app = Router::new()

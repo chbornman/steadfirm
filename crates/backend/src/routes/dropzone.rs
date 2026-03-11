@@ -22,6 +22,7 @@ async fn upload_file(
     let mut file_data: Option<Vec<u8>> = None;
     let mut filename = String::new();
     let mut service = String::new();
+    let mut relative_path: Option<String> = None;
 
     // Parse multipart fields.
     while let Some(field) = multipart
@@ -54,6 +55,14 @@ async fn upload_file(
                     .await
                     .map_err(|e| AppError::BadRequest(format!("failed to read service: {e}")))?;
             }
+            "relative_path" => {
+                let text = field.text().await.map_err(|e| {
+                    AppError::BadRequest(format!("failed to read relative_path: {e}"))
+                })?;
+                if !text.is_empty() {
+                    relative_path = Some(text);
+                }
+            }
             _ => {}
         }
     }
@@ -77,6 +86,7 @@ async fn upload_file(
         service = %service,
         mime_type = %mime_type,
         size_bytes = size_bytes,
+        relative_path = ?relative_path,
         "upload started"
     );
 
@@ -166,7 +176,26 @@ async fn upload_file(
                     "audiobooks not provisioned".into(),
                 ))?;
 
-            let abs_dir = format!("{}/{}", state.config.audiobooks_storage_path, user.id);
+            // Use relative_path to preserve folder structure (Author/Title/)
+            // for Audiobookshelf. Falls back to flat upload if no path.
+            let abs_dir = if let Some(ref rel) = relative_path {
+                // Strip the filename from relative_path to get the folder
+                let folder = std::path::Path::new(rel)
+                    .parent()
+                    .and_then(|p| p.to_str())
+                    .unwrap_or("");
+                if folder.is_empty() {
+                    format!("{}/{}", state.config.audiobooks_storage_path, user.id)
+                } else {
+                    format!(
+                        "{}/{}/{}",
+                        state.config.audiobooks_storage_path, user.id, folder
+                    )
+                }
+            } else {
+                format!("{}/{}", state.config.audiobooks_storage_path, user.id)
+            };
+
             tokio::fs::create_dir_all(&abs_dir)
                 .await
                 .map_err(|e| AppError::Internal(anyhow::anyhow!("mkdir error: {e}")))?;

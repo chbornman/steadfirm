@@ -48,3 +48,23 @@ pub const JELLYFIN_WIZARD_SETTLE_SECS: u64 = 2;
 
 /// Total number of services that should be initialized.
 pub const EXPECTED_SERVICE_COUNT: usize = 4;
+
+// ─── AI classification ───────────────────────────────────────────────
+
+/// Confidence threshold below which files are sent to the LLM for
+/// classification. Files at or above this threshold keep their
+/// heuristic classification.
+pub const AI_CONFIDENCE_THRESHOLD: f32 = 0.85;
+
+/// Default Anthropic model for classification.
+pub const DEFAULT_ANTHROPIC_MODEL: &str = "claude-sonnet-4-20250514";
+
+/// Default model name for local OpenAI-compatible servers.
+pub const DEFAULT_LOCAL_MODEL: &str = "default";
+
+/// Max tokens for the classification LLM response.
+pub const CLASSIFY_MAX_TOKENS: u64 = 4096;
+
+/// Maximum number of files to send to the LLM in a single batch.
+/// Larger batches are chunked.
+pub const CLASSIFY_BATCH_SIZE: usize = 50;
