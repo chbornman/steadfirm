@@ -1,0 +1,37 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+
+# Dependencies
+Cargo.lock
+
+# Environment
+.env
+.env.local
+.env.production
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+infra/.env
+
+# Tauri
+crates/app/gen/
+
+# Node (for web frontend if applicable)
+node_modules/
+web/dist/
+web/.next/
+
+# Logs
+*.log

@@ -1,0 +1,43 @@
+# Steadfirm Caddyfile
+# Replace {$DOMAIN} with your domain or use localhost for development.
+#
+# In production, pair with Cloudflare Tunnel:
+#   cloudflared tunnel --url http://localhost:80
+
+{$DOMAIN:localhost} {
+    # Steadfirm backend API
+    handle /api/* {
+        reverse_proxy steadfirm-backend:3001
+    }
+
+    # Direct service access for power users
+    handle /immich/* {
+        uri strip_prefix /immich
+        reverse_proxy immich-server:2283
+    }
+
+    handle /jellyfin/* {
+        reverse_proxy jellyfin:8096
+    }
+
+    handle /paperless/* {
+        uri strip_prefix /paperless
+        reverse_proxy paperless:8000
+    }
+
+    handle /audiobookshelf/* {
+        uri strip_prefix /audiobookshelf
+        reverse_proxy audiobookshelf:80
+    }
+
+    handle /actual/* {
+        uri strip_prefix /actual
+        reverse_proxy actual:5006
+    }
+
+    # Default: serve the web frontend
+    handle {
+        # reverse_proxy steadfirm-web:3000
+        respond "Steadfirm web frontend — pending" 200
+    }
+}
