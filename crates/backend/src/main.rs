@@ -1,26 +1,35 @@
 use std::net::SocketAddr;
 
-use axum::{Json, Router, routing::get};
-use serde_json::{Value, json};
+use axum::{routing::get, Json, Router};
+use serde_json::{json, Value};
 use sqlx::postgres::PgPoolOptions;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
-use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+mod auth;
 mod config;
 mod error;
+mod models;
+mod pagination;
+mod proxy;
 mod routes;
+mod services;
 
 /// Shared application state available to all route handlers.
 #[derive(Clone)]
 pub struct AppState {
     pub db: sqlx::PgPool,
     pub config: config::Config,
+    pub http: reqwest::Client,
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "steadfirm_backend=debug,tower_http=debug".into()))
+        .with(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "steadfirm_backend=debug,tower_http=debug".into()),
+        )
         .with(tracing_subscriber::fmt::layer())
         .init();
 
@@ -36,14 +45,19 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("connected to database");
 
     // Run SQLx migrations
-    sqlx::migrate!()
-        .run(&pool)
-        .await?;
+    sqlx::migrate!().run(&pool).await?;
     tracing::info!("database migrations applied");
+
+    // Shared HTTP client for all service calls
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .build()?;
 
     let state = AppState {
         db: pool,
         config: config.clone(),
+        http,
     };
 
     let app = Router::new()

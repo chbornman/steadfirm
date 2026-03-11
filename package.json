@@ -1,0 +1,5 @@
+{
+  "name": "steadfirm",
+  "private": true,
+  "workspaces": ["packages/*", "web"]
+}

@@ -136,3 +136,18 @@ Run as part of the deploy pipeline or as a Docker Compose `init` container. Must
 - Admin password: `zGDpLxYOdpR5nkIV1h3clGs8H6nMWUHR`
 - Admin token: `33d586b4c7834b4d87a7032e6b93f7ad`
 - Admin user ID: `bab8098494364f96a8d194ebe74ab085`
+
+---
+
+## BetterAuth Email (Resend)
+
+**Problem:** BetterAuth has no email provider configured. Password reset, email verification, and magic link flows don't work.
+
+**Solution:** Add Resend integration to the BetterAuth sidecar:
+1. Create a Resend API key at resend.com
+2. Add `RESEND_API_KEY` to `.env`
+3. Install `resend` package in `services/betterauth/`
+4. Configure `sendResetPassword` and optionally `sendVerificationEmail` in `auth.ts`
+5. Use `no-reply@steadfirm.io` as the from address (requires domain verification in Resend)
+
+**Priority:** Low for POC (5-10 known users, can reset passwords manually). Required before opening to wider audience.

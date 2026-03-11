@@ -17,7 +17,8 @@ repository = "https://github.com/chbornman/steadfirm"
 tokio = { version = "1", features = ["full"] }
 
 # Web framework
-axum = { version = "0.8" }
+axum = { version = "0.8", features = ["multipart"] }
+axum-extra = { version = "0.10", features = ["cookie"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"] }
 
@@ -26,7 +27,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # HTTP client (for proxying to underlying services)
-reqwest = { version = "0.12", features = ["json", "stream"] }
+reqwest = { version = "0.12", features = ["json", "stream", "multipart", "gzip"] }
 
 # Database
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "migrate"] }
@@ -39,14 +40,14 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 anyhow = "1"
 thiserror = "2"
 
-# Auth
-jsonwebtoken = "9"
-
 # Utils
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 mime = "0.3"
+mime_guess = "2"
 dotenvy = "0.15"
+rand = { version = "0.9", features = ["small_rng"] }
+tokio-util = { version = "0.7", features = ["io"] }
 
 # Shared crate
 steadfirm-shared = { path = "crates/shared" }

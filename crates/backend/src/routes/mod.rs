@@ -2,17 +2,23 @@ use axum::Router;
 
 use crate::AppState;
 
+mod admin;
+mod audiobooks;
+mod documents;
 mod dropzone;
-mod proxy;
+mod files;
+mod media;
+mod photos;
 mod users;
 
 pub fn api_router() -> Router<AppState> {
     Router::new()
         .nest("/users", users::router())
+        .nest("/admin", admin::router())
         .nest("/upload", dropzone::router())
-        .nest("/photos", proxy::photos_router())
-        .nest("/media", proxy::media_router())
-        .nest("/documents", proxy::documents_router())
-        .nest("/audiobooks", proxy::audiobooks_router())
-        .nest("/files", proxy::files_router())
+        .nest("/photos", photos::router())
+        .nest("/media", media::router())
+        .nest("/documents", documents::router())
+        .nest("/audiobooks", audiobooks::router())
+        .nest("/files", files::router())
 }
