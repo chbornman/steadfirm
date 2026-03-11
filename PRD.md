@@ -77,11 +77,17 @@ Single shared instances, multi-tenant by design:
 
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
-| `steadfirm-backend` | Rust / Axum | API gateway, Clerk auth, user provisioning, drop zone classification, service proxying |
-| `steadfirm-app` | Rust / Tauri 2 | Desktop + mobile client (future — v2) |
-| `steadfirm-shared` | Rust library | Shared types, models, file classification logic |
-| `web/` | TBD framework | Web frontend for v1 |
+| `crates/backend` | Rust / Axum | API gateway, Clerk auth, user provisioning, drop zone classification, service proxying |
+| `crates/app` | Rust / Tauri 2 | Desktop + mobile client — offline-first with local SQLite cache and sync |
+| `crates/app/src` | React + Vite | Tauri app frontend (offline-first, data via Tauri commands to local SQLite) |
+| `crates/shared` | Rust library | Shared Rust types, models, file classification logic |
+| `web/` | React + Vite + Bun | Browser frontend (online-only, data via HTTP to backend API) |
+| `packages/shared` | TypeScript | Shared API types, constants, validation |
+| `packages/ui` | React components | Shared UI: photo grid, media player, document viewer, drop zone |
+| `packages/theme` | CSS / design tokens | Shared styling and design system |
 | `infra/` | Docker Compose + Caddy | Service orchestration, reverse proxy |
+
+The `web/` and `crates/app/src/` are **separate React applications** that share UI components and types through `packages/`. Same monorepo pattern as Capstancloud. `web/` is the browser experience (online-only). `crates/app/` is the daily-driver native app (offline-first, syncs when online).
 
 ### Container architecture
 
@@ -249,7 +255,10 @@ Revenue at 10 users x $10/month = $100/month (Phase 3). Covers costs with margin
 |-------|--------|-----|
 | Backend language | Rust | Performance, safety, single binary deployment |
 | Backend framework | Axum | Tokio-native, tower middleware, best Rust web framework |
-| Client framework | Tauri 2 (Phase 2) | Desktop + mobile from one Rust codebase |
+| Web frontend | React + Vite + Bun | Browser app, online-only, proven from Pavo prototype |
+| App frontend | React + Vite (in Tauri) | Separate offline-first frontend, shares UI via packages/ |
+| Client framework | Tauri 2 | Desktop + mobile — offline SQLite cache, sync when online |
+| Shared packages | TypeScript (Bun workspace) | @steadfirm/shared (types), @steadfirm/ui (components), @steadfirm/theme |
 | Auth | Clerk | Proven, handles signup/signin/JWT, already used in Pavo prototype |
 | Database | PostgreSQL | Shared with Immich and Paperless, proven at scale |
 | Cache | Redis | Shared with Immich and Paperless |
@@ -279,7 +288,7 @@ Revenue at 10 users x $10/month = $100/month (Phase 3). Covers costs with margin
 
 ## Open questions
 
-1. **Web frontend framework** — TBD. Options: Leptos (Rust WASM, full-stack), a JS framework in the Tauri web view, or standalone React/Svelte. Decision needed before Phase 1 frontend work begins.
-2. **Media ingestion pipeline** — Jellyfin needs specific folder structures and naming. How sophisticated does the TMDb/MusicBrainz lookup need to be for v1? Minimum viable: rename file, place in user's library folder, let Jellyfin scan.
-3. **File storage backend** — Unclassified files in the "Files" tab: local disk with Postgres metadata is simplest. Is that sufficient, or do we want S3-compatible storage (MinIO) from the start?
-4. **Mobile camera sync feasibility** — Tauri 2 mobile is young. Need to evaluate whether photo library access plugins are mature enough for Phase 2, or if a native thin client is needed.
+1. **Media ingestion pipeline** — Jellyfin needs specific folder structures and naming. How sophisticated does the TMDb/MusicBrainz lookup need to be for v1? Minimum viable: rename file, place in user's library folder, let Jellyfin scan.
+2. **File storage backend** — Unclassified files in the "Files" tab: local disk with Postgres metadata is simplest. Is that sufficient, or do we want S3-compatible storage (MinIO) from the start?
+3. **Mobile camera sync feasibility** — Tauri 2 mobile is young. Need to evaluate whether photo library access plugins are mature enough, or if a native thin client is needed.
+4. **Offline sync strategy** — The Tauri app caches data locally in SQLite. What's the sync model? Full mirror of user's metadata? On-demand caching of recently viewed items? How are conflicts handled (e.g., user edits a budget category offline while server state changes)?
