@@ -1,0 +1,35 @@
+FROM docker.io/rust:1-bookworm AS builder
+
+WORKDIR /build
+
+# Cache dependencies by building a dummy project first
+COPY Cargo.toml Cargo.lock ./
+COPY crates/backend/Cargo.toml crates/backend/Cargo.toml
+COPY crates/shared/Cargo.toml crates/shared/Cargo.toml
+COPY crates/app/Cargo.toml crates/app/Cargo.toml
+
+# Create dummy source files so cargo can resolve the workspace
+RUN mkdir -p crates/backend/src crates/shared/src crates/app/src && \
+    echo "fn main() {}" > crates/backend/src/main.rs && \
+    echo "" > crates/shared/src/lib.rs && \
+    echo "fn main() {}" > crates/app/src/main.rs && \
+    cargo build --release -p steadfirm-backend && \
+    rm -rf crates/
+
+# Now copy the real source and build
+COPY crates/ crates/
+RUN touch crates/backend/src/main.rs crates/shared/src/lib.rs && \
+    cargo build --release -p steadfirm-backend
+
+# Runtime image
+FROM docker.io/debian:bookworm-slim
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates libssl3 curl && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/target/release/steadfirm-backend /usr/local/bin/steadfirm-backend
+
+EXPOSE 3001
+
+CMD ["steadfirm-backend"]

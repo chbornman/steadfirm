@@ -1,6 +1,7 @@
 ## Steadfirm Infrastructure
 ## Underlying self-hosted services that Steadfirm orchestrates.
-## All services share a single Postgres instance and a common Docker network.
+## All services share a single Postgres instance and a common Podman network.
+## Usage: podman-compose up -d
 
 services:
   # ──────────────────────────────────────────────
@@ -8,7 +9,7 @@ services:
   # ──────────────────────────────────────────────
 
   postgres:
-    image: tensorchord/pgvecto-rs:pg16-v0.2.1
+    image: docker.io/tensorchord/pgvecto-rs:pg16-v0.2.1
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER:-steadfirm}
@@ -18,7 +19,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./init-databases.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:18432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-steadfirm}"]
       interval: 10s
@@ -28,10 +29,12 @@ services:
       - steadfirm
 
   redis:
-    image: redis:7-alpine
+    image: docker.io/redis:7-alpine
     restart: unless-stopped
     volumes:
       - redis_data:/data
+    ports:
+      - "127.0.0.1:18379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -41,31 +44,73 @@ services:
       - steadfirm
 
   # ──────────────────────────────────────────────
+  # Authentication — BetterAuth (Bun sidecar)
+  # ──────────────────────────────────────────────
+
+  betterauth:
+    build:
+      context: ../services/betterauth
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      BETTER_AUTH_SECRET: ${BETTERAUTH_SECRET:?Set BETTERAUTH_SECRET}
+      BETTER_AUTH_URL: ${BETTERAUTH_URL:-http://localhost:18080}
+      BETTER_AUTH_DATABASE: postgresql://${DB_USER:-steadfirm}:${DB_PASSWORD}@postgres:5432/steadfirm
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # No host ports — only reachable via Caddy (/api/auth/*) and internal network
+    networks:
+      - steadfirm
+
+  # ──────────────────────────────────────────────
   # Steadfirm backend
   # ──────────────────────────────────────────────
 
-  # steadfirm-backend:
-  #   build:
-  #     context: ..
-  #     dockerfile: infra/Dockerfile.backend
-  #   restart: unless-stopped
-  #   env_file: .env
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #   ports:
-  #     - "127.0.0.1:3001:3001"
-  #   networks:
-  #     - steadfirm
+  steadfirm-backend:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-steadfirm}:${DB_PASSWORD}@postgres:5432/steadfirm
+      BETTERAUTH_URL: http://betterauth:3002
+      IMMICH_URL: http://immich-server:2283
+      JELLYFIN_URL: http://jellyfin:8096
+      PAPERLESS_URL: http://paperless:8000
+      AUDIOBOOKSHELF_URL: http://audiobookshelf:80
+      FILES_STORAGE_PATH: /data/steadfirm/files
+    volumes:
+      - steadfirm_files:/data/steadfirm/files
+    depends_on:
+      postgres:
+        condition: service_healthy
+      betterauth:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # No host ports — only reachable via Caddy (/api/*)
+    networks:
+      - steadfirm
 
   # ──────────────────────────────────────────────
   # Photos & Videos — Immich
   # ──────────────────────────────────────────────
 
   immich-server:
-    image: ghcr.io/immich-app/immich-server:release
+    image: ghcr.io/immich-app/immich-server:v1.132.3
     restart: unless-stopped
     environment:
       DB_HOSTNAME: postgres
@@ -80,13 +125,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    ports:
-      - "127.0.0.1:2283:2283"
+    # No host ports — only reachable by steadfirm-backend via internal network
     networks:
       - steadfirm
 
   immich-machine-learning:
-    image: ghcr.io/immich-app/immich-machine-learning:release
+    image: ghcr.io/immich-app/immich-machine-learning:v1.132.3
     restart: unless-stopped
     volumes:
       - immich_ml_cache:/cache
@@ -98,14 +142,13 @@ services:
   # ──────────────────────────────────────────────
 
   jellyfin:
-    image: jellyfin/jellyfin:latest
+    image: docker.io/jellyfin/jellyfin:latest
     restart: unless-stopped
     volumes:
       - jellyfin_config:/config
       - jellyfin_cache:/cache
       - media_library:/media
-    ports:
-      - "127.0.0.1:8096:8096"
+    # No host ports — only reachable by steadfirm-backend via internal network
     networks:
       - steadfirm
 
@@ -123,7 +166,7 @@ services:
       PAPERLESS_DBNAME: paperless
       PAPERLESS_REDIS: redis://redis:6379
       PAPERLESS_OCR_LANGUAGE: eng
-      PAPERLESS_URL: ${PAPERLESS_URL:-http://localhost:8000}
+      PAPERLESS_URL: http://paperless:8000
     volumes:
       - paperless_data:/usr/src/paperless/data
       - paperless_media:/usr/src/paperless/media
@@ -133,8 +176,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    ports:
-      - "127.0.0.1:8000:8000"
+    # No host ports — only reachable by steadfirm-backend via internal network
     networks:
       - steadfirm
 
@@ -149,8 +191,7 @@ services:
       - audiobooks_library:/audiobooks
       - audiobookshelf_config:/config
       - audiobookshelf_metadata:/metadata
-    ports:
-      - "127.0.0.1:13378:80"
+    # No host ports — only reachable by steadfirm-backend via internal network
     networks:
       - steadfirm
 
@@ -159,20 +200,20 @@ services:
   # ──────────────────────────────────────────────
 
   caddy:
-    image: caddy:2-alpine
+    image: docker.io/caddy:2-alpine
     restart: unless-stopped
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
       - caddy_config:/config
     ports:
-      - "80:80"
-      - "443:443"
+      - "18080:80"
+      - "18443:443"
     depends_on:
-      - immich-server
-      - jellyfin
-      - paperless
-      - audiobookshelf
+      steadfirm-backend:
+        condition: service_healthy
+      betterauth:
+        condition: service_healthy
     networks:
       - steadfirm
 

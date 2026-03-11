@@ -18,7 +18,7 @@
 | **Axum** | [docs.rs/axum](https://docs.rs/axum/latest/axum/) |
 | **Tauri 2** | [v2.tauri.app](https://v2.tauri.app/) |
 | **SQLx** | [docs.rs/sqlx](https://docs.rs/sqlx/latest/sqlx/) |
-| **Clerk** | [clerk.com/docs](https://clerk.com/docs) — [JWT verification](https://clerk.com/docs/backend-requests/handling/manual-jwt) — [Webhooks](https://clerk.com/docs/webhooks/overview) |
+| **BetterAuth** | [better-auth.com/docs](https://www.better-auth.com/docs) — [Session management](https://www.better-auth.com/docs/concepts/session-management) — [Plugins](https://www.better-auth.com/docs/plugins) |
 | **React** | [react.dev](https://react.dev/) |
 | **Vite** | [vite.dev](https://vite.dev/) |
 | **Bun** | [bun.sh/docs](https://bun.sh/docs) |
@@ -41,8 +41,8 @@ Steadfirm is a unified personal cloud. Users interact with a single app (web or 
 │  │  online-only │    │  offline-first + SQLite      │   │
 │  └──────┬───────┘    └──────────────┬───────────────┘   │
 │         │                           │                   │
-│         │  HTTP + Clerk JWT         │  HTTP + Clerk JWT │
-│         │                           │  (when online)    │
+│         │  HTTP + session token     │  HTTP + session token │
+│         │                           │  (when online)       │
 └─────────┼───────────────────────────┼───────────────────┘
           │                           │
           ▼                           ▼
@@ -50,8 +50,8 @@ Steadfirm is a unified personal cloud. Users interact with a single app (web or 
 │               Steadfirm Backend (Axum)                  │
 │                                                         │
 │  ┌──────────┐ ┌────────────┐ ┌───────────────────────┐  │
-│  │ Clerk    │ │ Drop Zone  │ │ Service Proxy         │  │
-│  │ JWT Auth │ │ Classifier │ │ (per-user credentials)│  │
+│  │ Session  │ │ Drop Zone  │ │ Service Proxy         │  │
+│  │ Auth (PG)│ │ Classifier │ │ (per-user credentials)│  │
 │  └──────────┘ └────────────┘ └───────────┬───────────┘  │
 │                                          │              │
 │  ┌──────────────────────────────────┐    │              │
@@ -76,32 +76,38 @@ Steadfirm is a unified personal cloud. Users interact with a single app (web or 
 
 ## 2. Authentication
 
+### Architecture
+
+BetterAuth runs as a Bun sidecar container in Docker Compose. It owns signup, signin, session creation, and social OAuth (Google). It writes directly to the shared Postgres instance (`betterauth` database or `steadfirm` database — same cluster).
+
+The Axum backend never calls BetterAuth over the network for session validation. Instead, it reads the `session` table directly via SQLx. This is fast, zero-latency, and avoids a runtime dependency on the BetterAuth process.
+
 ### Flow
 
 1. User opens web/ or Tauri app
-2. Clerk SDK handles signup/signin (email + password, or SSO)
-3. Clerk returns a signed JWT
-4. Client includes JWT in every request: `Authorization: Bearer <clerk_jwt>`
-5. Backend validates JWT against Clerk's JWKS endpoint (cached, rotated hourly)
-6. Backend extracts `clerk_user_id` from JWT claims
+2. Client redirects to BetterAuth for signup/signin (email + password, or Google OAuth)
+3. BetterAuth creates a session row in Postgres, returns session token (cookie or header)
+4. Client includes session token in every request (cookie or `Authorization: Bearer <session_token>`)
+5. Axum backend reads the `session` table in Postgres to validate the token (direct DB query, no network call)
+6. Backend extracts `user_id` from the session row
 7. Backend queries `service_connections` table to get user's credentials for each service
 8. Backend makes proxied API calls using those service-specific credentials
 
 ### Database Schema
 
-```sql
-CREATE TABLE users (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    clerk_id        TEXT UNIQUE NOT NULL,
-    email           TEXT NOT NULL,
-    display_name    TEXT NOT NULL,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+BetterAuth manages its own tables (`user`, `session`, `account`, `verification`). Steadfirm adds application-specific tables that reference BetterAuth's `user.id`:
 
+```sql
+-- Managed by BetterAuth (do not modify directly):
+-- user (id, name, email, emailVerified, image, createdAt, updatedAt)
+-- session (id, expiresAt, token, ipAddress, userAgent, userId)
+-- account (id, accountId, providerId, userId, ...)
+-- verification (id, identifier, value, expiresAt, ...)
+
+-- Managed by Steadfirm:
 CREATE TABLE service_connections (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id         TEXT NOT NULL,  -- references BetterAuth user.id
     service         TEXT NOT NULL,  -- 'immich', 'jellyfin', 'paperless', 'audiobookshelf'
     service_user_id TEXT NOT NULL,  -- user ID within the service
     api_key         TEXT NOT NULL,  -- encrypted service API key/token
@@ -112,7 +118,7 @@ CREATE TABLE service_connections (
 
 CREATE TABLE files (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id         TEXT NOT NULL,  -- references BetterAuth user.id
     filename        TEXT NOT NULL,
     mime_type       TEXT NOT NULL,
     size_bytes      BIGINT NOT NULL,
@@ -123,31 +129,30 @@ CREATE TABLE files (
 
 ### User Provisioning
 
-Triggered by Clerk webhook (`user.created`) or manual admin endpoint:
+Triggered by BetterAuth webhook/hook (`user.created`), DB polling, or manual admin endpoint:
 
 ```
 POST /api/v1/admin/provision
 {
-    "clerk_id": "user_abc123"
+    "user_id": "betterauth_user_id"
 }
 ```
 
 Backend:
-1. Fetches user details from Clerk API
-2. Creates row in `users` table
-3. Creates accounts in each service via admin APIs:
+1. Reads user details from BetterAuth's `user` table in Postgres
+2. Creates accounts in each service via admin APIs:
    - Immich: `POST /api/admin/users` → returns user ID + API key
    - Jellyfin: `POST /Users/New` → returns user ID, then generate API key
    - Paperless: `POST /api/users/` → returns user ID + token
    - Audiobookshelf: `POST /api/users` → returns user ID + token
-4. Stores all credentials in `service_connections` (encrypted)
-5. Returns success
+3. Stores all credentials in `service_connections` (encrypted)
+4. Returns success
 
 ---
 
 ## 3. Backend API (Steadfirm)
 
-The backend exposes a unified REST API. All endpoints require Clerk JWT auth except `/health`.
+The backend exposes a unified REST API. All endpoints require session auth except `/health` and `/api/auth/*` (handled by BetterAuth).
 
 ### Core Endpoints
 
@@ -326,7 +331,7 @@ web/               Browser app (online-only)
     pages/           Photos, Media, Documents, Audiobooks, Files
     hooks/           useApi() — HTTP fetch to Steadfirm backend
     lib/
-      api.ts         typed API client (fetch + Clerk JWT)
+      api.ts         typed API client (fetch + session token)
 
 crates/app/src/    Tauri app (offline-first)
   src/
@@ -524,10 +529,10 @@ All credentials are stored encrypted in the `service_connections` table. The bac
 ## 9. Milestones (v1 POC)
 
 ### M1: Infrastructure + Auth
-- [ ] Docker Compose runs all services
-- [ ] Caddy routes traffic
+- [ ] Docker Compose runs all services (including BetterAuth sidecar)
+- [ ] Caddy routes traffic (including /api/auth/* to BetterAuth)
 - [ ] Axum backend starts with health endpoint
-- [ ] Clerk JWT validation middleware works
+- [ ] BetterAuth session validation middleware works (direct Postgres read)
 - [ ] User provisioning creates accounts in all services
 - [ ] `service_connections` table stores credentials
 
@@ -546,7 +551,7 @@ All credentials are stored encrypted in the `service_connections` table. The bac
 - [ ] Jellyfin folder structure + TMDb rename for movies
 
 ### M4: Web Frontend
-- [ ] Clerk login/signup
+- [ ] BetterAuth login/signup (email + password, Google OAuth)
 - [ ] Photos tab with grid + lightbox + video playback
 - [ ] Media tab with movies/shows/music + streaming
 - [ ] Documents tab with grid + PDF viewer

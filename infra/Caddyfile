@@ -8,7 +8,12 @@
 # Direct service access (power user mode) is a future roadmap item.
 
 {$DOMAIN:localhost} {
-    # Steadfirm backend API
+    # BetterAuth — handles signup, signin, session creation, OAuth callbacks
+    handle /api/auth/* {
+        reverse_proxy betterauth:3002
+    }
+
+    # Steadfirm backend API — everything else under /api/
     handle /api/* {
         reverse_proxy steadfirm-backend:3001
     }

@@ -27,7 +27,7 @@ The pitch to friends and family: **"I'll handle everything. You open the app, an
 ### What the user sees
 
 - A web app (Tauri desktop + mobile to follow)
-- Sign in once with Clerk
+- Sign in once (email + password or Google OAuth)
 - Five tabs: Photos, Media, Documents, Audiobooks, Files
 - A universal **drop zone**: upload any file, confirm the suggested destination, done
 - Beautiful display and playback for photos, video, audio, and documents
@@ -77,7 +77,7 @@ Single shared instances, multi-tenant by design:
 
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
-| `crates/backend` | Rust / Axum | API gateway, Clerk auth, user provisioning, drop zone classification, service proxying |
+| `crates/backend` | Rust / Axum | API gateway, session validation, user provisioning, drop zone classification, service proxying |
 | `crates/app` | Rust / Tauri 2 | Desktop + mobile client — offline-first with local SQLite cache and sync |
 | `crates/app/src` | React + Vite | Tauri app frontend (offline-first, data via Tauri commands to local SQLite) |
 | `crates/shared` | Rust library | Shared Rust types, models, file classification logic |
@@ -91,18 +91,19 @@ The `web/` and `crates/app/src/` are **separate React applications** that share 
 
 ### Container architecture
 
-~10 containers total (not per user):
+~11 containers total (not per user):
 
 ```
 Caddy (reverse proxy + TLS)
 Steadfirm Backend (Axum)
+Steadfirm Auth (BetterAuth / Bun sidecar)
 Steadfirm Web Frontend
 Immich Server
 Immich Machine Learning
 Jellyfin
 Paperless-ngx
 Audiobookshelf
-PostgreSQL (shared: steadfirm + immich + paperless databases)
+PostgreSQL (shared: steadfirm + immich + paperless + betterauth databases)
 Redis (shared: immich + paperless)
 ```
 
@@ -110,20 +111,22 @@ All containers on a single Docker network. All service ports bound to localhost 
 
 ### Authentication flow
 
-1. User signs in via Clerk (web app)
-2. Client stores Clerk JWT
-3. Every API request includes the JWT
-4. Backend validates JWT against Clerk's JWKS public keys
-5. Backend looks up user in `service_connections` table
-6. Backend makes API calls to underlying services using that user's service-specific credentials
-7. User never authenticates directly with any underlying service
+1. User opens Steadfirm (web or Tauri app)
+2. BetterAuth sidecar (Bun container) handles signup/signin (email + password, or Google OAuth)
+3. BetterAuth creates a session in the shared Postgres database
+4. Client receives session token (cookie or header)
+5. Every API request includes the session token
+6. Axum backend validates the session by reading the `session` table in Postgres (direct DB query, no network call to BetterAuth)
+7. Backend looks up user in `service_connections` table
+8. Backend makes API calls to underlying services using that user's service-specific credentials
+9. User never authenticates directly with any underlying service
 
 ### User provisioning
 
 When a new user is added:
 
-1. User signs up via Clerk
-2. Backend receives Clerk webhook (or manual trigger)
+1. User signs up via BetterAuth (creates user + session in Postgres)
+2. Axum backend detects new user (via DB trigger, polling, or BetterAuth webhook)
 3. Backend calls each service's admin API to create an account:
    - Immich: `POST /api/admin/users`
    - Jellyfin: `POST /Users/New`
@@ -161,7 +164,7 @@ Prove the unified experience works for 5-10 friends and family on a single dedic
 **In scope:**
 - Web app with five tabs: Photos, Media, Documents, Audiobooks, Files
 - Display and playback: photo grid + lightbox, video streaming, audio playback, document viewer
-- Clerk authentication (signup/signin)
+- BetterAuth authentication (email + password, Google OAuth)
 - Backend API proxying to all four services
 - Drop zone with MIME-based classification + user confirmation
 - Unclassified file storage in Steadfirm
@@ -206,13 +209,13 @@ Single dedicated server:
 - Tauri 2 app (desktop + mobile from one codebase)
 - Camera roll auto-sync from mobile
 - Automated backups to Backblaze B2
-- Automated user provisioning via Clerk webhooks
+- Automated user provisioning via BetterAuth webhooks
 - Monitoring and alerting (Prometheus + Grafana)
 - Improved drop zone classification (reduce confirmation prompts)
 
 ### Phase 3 — Monetization and growth
 
-- $10/month billing via Stripe or Clerk payments
+- $10/month billing via Stripe
 - Onboard additional friend/family groups
 - Per-user storage quotas and usage tracking
 - Uptime commitment and proper SLA
@@ -243,7 +246,7 @@ Single dedicated server:
 | Electricity | ~$10-15/month |
 | Cloudflare Tunnel | Free |
 | Backblaze B2 (backups, ~2TB, Phase 2) | ~$10/month |
-| Clerk (auth) | Free tier covers < 10k MAU |
+| BetterAuth (auth) | Free — self-hosted, MIT license |
 | steadfirm.io domain | ~$30/year |
 | **Total operating cost (POC)** | **~$15/month** |
 
@@ -259,7 +262,7 @@ Revenue at 10 users x $10/month = $100/month (Phase 3). Covers costs with margin
 | App frontend | React + Vite (in Tauri) | Separate offline-first frontend, shares UI via packages/ |
 | Client framework | Tauri 2 | Desktop + mobile — offline SQLite cache, sync when online |
 | Shared packages | TypeScript (Bun workspace) | @steadfirm/shared (types), @steadfirm/ui (components), @steadfirm/theme |
-| Auth | Clerk | Proven, handles signup/signin/JWT, already used in Pavo prototype |
+| Auth | BetterAuth (Bun sidecar) | Self-hosted, MIT license, email + password + Google OAuth, session-based, shares Postgres |
 | Database | PostgreSQL | Shared with Immich and Paperless, proven at scale |
 | Cache | Redis | Shared with Immich and Paperless |
 | Reverse proxy | Caddy | Automatic HTTPS, simple config, lighter than Traefik |

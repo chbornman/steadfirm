@@ -5,9 +5,8 @@ pub struct Config {
     pub port: u16,
     pub database_url: String,
 
-    // Clerk auth
-    pub clerk_publishable_key: String,
-    pub clerk_secret_key: String,
+    // BetterAuth sidecar URL (for proxying /api/auth/* from Caddy, not used for session validation)
+    pub betterauth_url: String,
 
     // Underlying services
     pub immich_url: Option<String>,
@@ -28,8 +27,7 @@ impl Config {
         Ok(Self {
             port: env_or("PORT", "3001").parse()?,
             database_url: env_required("DATABASE_URL")?,
-            clerk_publishable_key: env_required("CLERK_PUBLISHABLE_KEY")?,
-            clerk_secret_key: env_required("CLERK_SECRET_KEY")?,
+            betterauth_url: env_or("BETTERAUTH_URL", "http://betterauth:3002"), // container name inside compose
             immich_url: env_optional("IMMICH_URL"),
             immich_api_key: env_optional("IMMICH_API_KEY"),
             jellyfin_url: env_optional("JELLYFIN_URL"),

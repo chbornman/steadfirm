@@ -1,0 +1,17 @@
+{
+  "name": "@steadfirm/betterauth",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "better-auth": "^1.2.0",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0"
+  }
+}

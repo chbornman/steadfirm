@@ -1,0 +1,10 @@
+target/
+node_modules/
+.git/
+web/
+mobile/
+services/
+infra/
+*.md
+LICENSE
+.env*

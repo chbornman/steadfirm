@@ -2,7 +2,7 @@
 
 ## Overview
 
-Steadfirm is a unified personal cloud platform. One app, one login for photos, media, documents, audiobooks, and general file storage — backed by self-hosted open-source services (Immich, Jellyfin, Paperless-ngx, Audiobookshelf). Auth via Clerk. See PRD.md for full product context.
+Steadfirm is a unified personal cloud platform. One app, one login for photos, media, documents, audiobooks, and general file storage — backed by self-hosted open-source services (Immich, Jellyfin, Paperless-ngx, Audiobookshelf). Auth via BetterAuth (Bun sidecar, session-based, shared Postgres). See PRD.md for full product context.
 
 ## Project Structure
 
@@ -34,7 +34,7 @@ Same monorepo pattern as Capstancloud (frontend/ vs app/ with shared packages/).
 - **Web frontend**: React + Vite + Bun (browser, online-only)
 - **App frontend**: React + Vite (Tauri, offline-first with SQLite)
 - **Client**: Tauri 2 (desktop + mobile from one codebase)
-- **Auth**: Clerk (JWT validation)
+- **Auth**: BetterAuth (Bun sidecar container, session-based, Axum validates via direct Postgres read)
 - **Database**: PostgreSQL via SQLx (server), SQLite (Tauri app local cache)
 - **Package manager**: Bun (TS workspaces), Cargo (Rust workspace)
 - **Infrastructure**: Docker Compose, Caddy, Cloudflare Tunnel
