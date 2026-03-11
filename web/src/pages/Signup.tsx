@@ -3,6 +3,7 @@ import { useNavigate, Link } from '@tanstack/react-router';
 import { Card, Form, Input, Button, Typography, Divider, App } from 'antd';
 import { GoogleLogo } from '@phosphor-icons/react';
 import { cssVar } from '@steadfirm/theme';
+import { Wordmark } from '@steadfirm/ui';
 import { signUp, signIn } from '@/hooks/useAuth';
 import { AuthLayout } from '@/layouts/AuthLayout';
 
@@ -56,18 +57,7 @@ export function SignupPage() {
   return (
     <AuthLayout>
       <div style={{ textAlign: 'center', marginBottom: 32 }}>
-        <div
-          style={{
-            width: 48,
-            height: 48,
-            borderRadius: 8,
-            background: cssVar.accent,
-            margin: '0 auto 16px',
-          }}
-        />
-        <Title level={3} style={{ margin: 0 }}>
-          Steadfirm
-        </Title>
+        <Wordmark size={36} accentColor={cssVar.accent} />
       </div>
 
       <Card bordered={false} style={{ borderRadius: 12 }}>

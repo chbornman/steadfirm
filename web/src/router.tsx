@@ -20,6 +20,7 @@ import { AudiobooksPage } from '@/pages/Audiobooks';
 import { AudiobookDetailPage } from '@/pages/AudiobookDetail';
 import { FilesPage } from '@/pages/Files';
 import { UploadPage } from '@/pages/Upload';
+import { SettingsPage } from '@/pages/Settings';
 import { NotFoundPage } from '@/pages/NotFound';
 import { authClient } from '@/hooks/useAuth';
 import { queryClient } from '@/query-client';
@@ -176,6 +177,13 @@ const uploadRoute = createRoute({
   component: UploadPage,
 });
 
+// Settings
+const settingsRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/settings',
+  component: SettingsPage,
+});
+
 // Router tree
 const routeTree = rootRoute.addChildren([
   loginRoute,
@@ -194,6 +202,7 @@ const routeTree = rootRoute.addChildren([
     audiobookDetailRoute,
     filesRoute,
     uploadRoute,
+    settingsRoute,
   ]),
 ]);
 

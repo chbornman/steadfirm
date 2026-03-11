@@ -36,4 +36,5 @@ export const ROUTES = {
   AUDIOBOOKS: '/audiobooks',
   FILES: '/files',
   UPLOAD: '/upload',
+  SETTINGS: '/settings',
 } as const;

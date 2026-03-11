@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { Select, Input, Typography, Spin, Drawer, Tag, Grid } from 'antd';
+import { Select, Input, Typography, Spin, Tag, Grid } from 'antd';
 import { FileText } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { DocumentViewer } from '@steadfirm/ui';
+import { DocumentViewer, MediaViewer } from '@steadfirm/ui';
 import { gridContainer, gridItem } from '@steadfirm/theme';
 import type { DocumentListResponse, Document } from '@steadfirm/shared';
 import { DEFAULT_PAGE_SIZE } from '@steadfirm/shared';
@@ -309,14 +309,12 @@ export function DocumentsPage() {
         </AnimatePresence>
       </div>
 
-      {/* Document viewer drawer */}
-      <Drawer
+      {/* Document viewer lightbox */}
+      <MediaViewer
         open={selectedDoc !== null}
         onClose={() => setSelectedDoc(null)}
-        width={isMobile ? '100%' : '80%'}
-        closable
-        title={null}
-        styles={{ body: { padding: 0, height: '100%' } }}
+        maxWidth={isMobile ? '100vw' : 1200}
+        maxHeight={isMobile ? '100vh' : '90vh'}
       >
         {selectedDoc && (
           <DocumentViewer
@@ -331,7 +329,7 @@ export function DocumentsPage() {
             onDownload={handleDownload}
           />
         )}
-      </Drawer>
+      </MediaViewer>
 
       <style>{`
         .doc-card:hover {

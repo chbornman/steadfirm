@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { Layout, Dropdown, Avatar, Grid } from 'antd';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   ImagesSquare,
   FilmSlate,
@@ -12,10 +13,12 @@ import {
   Sun,
   Moon,
   Desktop,
+  Gear,
   SignOut,
   User,
 } from '@phosphor-icons/react';
 import { cssVar } from '@steadfirm/theme';
+import { Wordmark } from '@steadfirm/ui';
 import { useTheme } from '@/hooks/useTheme';
 import { signOut } from '@/hooks/useAuth';
 import { useMusicPlayerStore } from '@/stores/music-player';
@@ -36,7 +39,11 @@ const navItems = [
   { key: '/documents', label: 'Documents', icon: FileText },
   { key: '/audiobooks', label: 'Audiobooks', icon: Headphones },
   { key: '/files', label: 'Files', icon: Folder },
+  { key: '/settings', label: 'Settings', icon: Gear },
 ];
+
+/** Shared spring config for the sliding pill indicator */
+const pillSpring = { type: 'spring', stiffness: 500, damping: 35 } as const;
 
 export function AppLayout({ children }: AppLayoutProps) {
   const navigate = useNavigate();
@@ -77,6 +84,12 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   const userMenuItems = [
     {
+      key: 'settings',
+      label: 'Settings',
+      icon: <Gear size={16} />,
+      onClick: () => handleNav('/settings'),
+    },
+    {
       key: 'theme',
       label: `Theme: ${mode}`,
       icon: <ThemeIcon size={16} />,
@@ -113,64 +126,82 @@ export function AppLayout({ children }: AppLayoutProps) {
             borderBottom: '1px solid var(--ant-color-border)',
           }}
         >
-          {/* Logo */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              marginRight: 32,
-              cursor: 'pointer',
-            }}
+          {/* Logo — left pinned */}
+          <Wordmark
+            size={24}
             onClick={() => handleNav('/photos')}
-          >
-            <div
+            style={{ flexShrink: 0 }}
+          />
+
+          {/* Centered floating pill nav */}
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+            <nav
               style={{
-                width: 24,
-                height: 24,
-                borderRadius: 4,
-                background: cssVar.accent,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 2,
+                padding: 4,
+                borderRadius: 9999,
+                background: 'var(--ant-color-fill-quaternary)',
+                position: 'relative',
               }}
-            />
-            <span style={{ fontWeight: 600, fontSize: 16 }}>Steadfirm</span>
+            >
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeKey === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    onClick={() => handleNav(item.key)}
+                    style={{
+                      position: 'relative',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '6px 14px',
+                      border: 'none',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      color: isActive
+                        ? '#fff'
+                        : 'var(--ant-color-text-secondary)',
+                      fontWeight: isActive ? 600 : 400,
+                      fontSize: 13,
+                      fontFamily: 'inherit',
+                      borderRadius: 9999,
+                      zIndex: 1,
+                      transition: 'color 0.2s ease',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {/* Animated pill background */}
+                    <AnimatePresence>
+                      {isActive && (
+                        <motion.span
+                          layoutId="nav-pill"
+                          transition={pillSpring}
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            borderRadius: 9999,
+                            background: cssVar.accent,
+                            boxShadow:
+                              '0 2px 8px rgba(0, 0, 0, 0.15)',
+                            zIndex: -1,
+                          }}
+                        />
+                      )}
+                    </AnimatePresence>
+                    <Icon size={16} weight={isActive ? 'fill' : 'regular'} />
+                    {item.label}
+                  </button>
+                );
+              })}
+            </nav>
           </div>
 
-          {/* Tab navigation */}
-          <nav style={{ display: 'flex', gap: 4, flex: 1 }}>
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive =
-                activeKey === item.key;
-              return (
-                <button
-                  key={item.key}
-                  onClick={() => handleNav(item.key)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '6px 12px',
-                    border: 'none',
-                    background: 'transparent',
-                    cursor: 'pointer',
-                    borderBottom: isActive ? `2px solid ${cssVar.accent}` : '2px solid transparent',
-                    color: isActive ? 'var(--ant-color-text)' : 'var(--ant-color-text-secondary)',
-                    fontWeight: isActive ? 600 : 400,
-                    fontSize: 14,
-                    fontFamily: 'inherit',
-                    transition: 'color 0.15s, border-color 0.15s',
-                    height: 55,
-                  }}
-                >
-                  <Icon size={18} weight={isActive ? 'fill' : 'regular'} />
-                  {item.label}
-                </button>
-              );
-            })}
-          </nav>
-
           {/* Right side */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             <button
               onClick={() => handleNav('/upload')}
               style={{
@@ -179,35 +210,17 @@ export function AppLayout({ children }: AppLayoutProps) {
                 gap: 6,
                 padding: '6px 12px',
                 border: '1px solid var(--ant-color-border)',
-                borderRadius: 6,
+                borderRadius: 9999,
                 background: 'transparent',
                 cursor: 'pointer',
                 color: 'var(--ant-color-text-secondary)',
                 fontSize: 13,
                 fontFamily: 'inherit',
+                transition: 'border-color 0.15s ease',
               }}
             >
               <CloudArrowUp size={18} />
               Upload
-            </button>
-
-            <button
-              onClick={cycleMode}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 32,
-                height: 32,
-                border: 'none',
-                borderRadius: 6,
-                background: 'transparent',
-                cursor: 'pointer',
-                color: 'var(--ant-color-text-secondary)',
-              }}
-              title={`Theme: ${mode}`}
-            >
-              <ThemeIcon size={18} />
             </button>
 
             <Dropdown menu={{ items: userMenuItems }} trigger={['click']}>
@@ -239,17 +252,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             borderBottom: '1px solid var(--ant-color-border)',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div
-              style={{
-                width: 24,
-                height: 24,
-                borderRadius: 4,
-                background: cssVar.accent,
-              }}
-            />
-            <span style={{ fontWeight: 600, fontSize: 16 }}>Steadfirm</span>
-          </div>
+          <Wordmark size={22} onClick={() => handleNav('/photos')} />
           <Dropdown menu={{ items: userMenuItems }} trigger={['click']}>
             <Avatar
               size={32}
@@ -303,6 +306,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 key={item.key}
                 onClick={() => handleNav(item.key)}
                 style={{
+                  position: 'relative',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
@@ -314,8 +318,24 @@ export function AppLayout({ children }: AppLayoutProps) {
                   color: isActive ? cssVar.accent : 'var(--ant-color-text-secondary)',
                   fontSize: 10,
                   fontFamily: 'inherit',
+                  transition: 'color 0.2s ease',
                 }}
               >
+                {/* Active dot indicator for mobile */}
+                {isActive && (
+                  <motion.span
+                    layoutId="mobile-nav-dot"
+                    transition={pillSpring}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      width: 4,
+                      height: 4,
+                      borderRadius: 9999,
+                      background: cssVar.accent,
+                    }}
+                  />
+                )}
                 <Icon size={22} weight={isActive ? 'fill' : 'regular'} />
                 <span>{item.label}</span>
               </button>

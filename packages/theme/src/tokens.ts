@@ -12,11 +12,11 @@ export const colors = {
   neutral900: '#171717',
   neutral950: '#0a0a0a',
 
-  accent: '#D97706',
-  accentLight: '#F59E0B',
-  accentDark: '#B45309',
-  accentSubtle: '#FEF3C7',
-  accentSubtleDark: '#78350F',
+  accent: '#7C3AED',
+  accentLight: '#A78BFA',
+  accentDark: '#5B21B6',
+  accentSubtle: '#EDE9FE',
+  accentSubtleDark: '#4C1D95',
 
   success: '#22C55E',
   warning: '#F59E0B',
@@ -50,6 +50,7 @@ export const radii = {
 export const typography = {
   fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
   fontFamilyMono: "'JetBrains Mono', 'Fira Code', monospace",
+  fontFamilyScript: "'Kaushan Script', cursive",
 };
 
 /**

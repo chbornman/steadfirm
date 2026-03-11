@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Segmented, Typography, Drawer, Spin, Grid } from 'antd';
+import { Segmented, Typography, Spin, Grid } from 'antd';
 import { ArrowLeft, Play } from '@phosphor-icons/react';
-import { VideoPlayer } from '@steadfirm/ui';
+import { VideoPlayer, MediaViewer } from '@steadfirm/ui';
 import { overlay } from '@steadfirm/theme';
 import type { Season, Episode } from '@steadfirm/shared';
 import { showQueries } from '@/api/media';
@@ -263,23 +263,24 @@ export function MediaShowDetailPage() {
         }
       `}</style>
 
-      {/* Episode player drawer */}
-      <Drawer
+      {/* Episode player lightbox */}
+      <MediaViewer
         open={selectedEpisode !== null}
         onClose={() => setSelectedEpisode(null)}
-        width={isMobile ? '100%' : 480}
-        closable
-        title={selectedEpisode?.title}
-        styles={{ body: { padding: 0 } }}
+        maxWidth={isMobile ? '100vw' : 1100}
+        maxHeight={isMobile ? '100vh' : '90vh'}
       >
         {selectedEpisode && (
-          <div>
+          <div style={{ width: '100%', overflow: 'auto' }}>
             <VideoPlayer
               src={selectedEpisode.streamUrl}
               poster={selectedEpisode.imageUrl}
             />
             <div style={{ padding: 20 }}>
-              <Typography.Text type="secondary">
+              <Typography.Title level={4} style={{ margin: 0 }}>
+                {selectedEpisode.title}
+              </Typography.Title>
+              <Typography.Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
                 Season {selectedEpisode.seasonNumber}, Episode {selectedEpisode.episodeNumber}
               </Typography.Text>
               <Typography.Paragraph style={{ marginTop: 12 }}>
@@ -288,7 +289,7 @@ export function MediaShowDetailPage() {
             </div>
           </div>
         )}
-      </Drawer>
+      </MediaViewer>
     </>
   );
 }

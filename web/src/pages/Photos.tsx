@@ -3,8 +3,6 @@ import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-q
 import { Select, Typography, Spin, Grid, Image } from 'antd';
 import { Heart } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RowsPhotoAlbum } from 'react-photo-album';
-import 'react-photo-album/rows.css';
 import { gridItem as gridItemVariant, overlay, cssVar } from '@steadfirm/theme';
 import type { Photo, PhotoListResponse } from '@steadfirm/shared';
 import { DEFAULT_PAGE_SIZE } from '@steadfirm/shared';
@@ -107,135 +105,8 @@ export function PhotosPage() {
     [favoriteMutation],
   );
 
-  // Build album photos for react-photo-album
-  const albumPhotos = useMemo(
-    () =>
-      allPhotos.map((p) => ({
-        src: p.thumbnailUrl,
-        width: p.width || 400,
-        height: p.height || 300,
-        key: p.id,
-      })),
-    [allPhotos],
-  );
-
-  const targetRowHeight = isMobile ? 160 : 220;
-
-  // Ref for tracking which photos have been rendered (for stagger)
+  // Ref for tracking which photos have been rendered (for stagger animation)
   const renderedRef = useRef(new Set<string>());
-
-  const renderPhoto = useCallback(
-    (
-      _props: { onClick?: React.MouseEventHandler },
-      {
-        photo,
-        index,
-        width,
-        height,
-      }: {
-        photo: (typeof albumPhotos)[number];
-        index: number;
-        width: number;
-        height: number;
-      },
-    ) => {
-      const sourcePhoto = allPhotos[index];
-      if (!sourcePhoto) return null;
-
-      const isNew = !renderedRef.current.has(photo.key);
-      if (isNew) renderedRef.current.add(photo.key);
-
-      return (
-        <motion.div
-          key={photo.key}
-          variants={gridItemVariant}
-          initial={isNew ? 'hidden' : false}
-          whileInView="visible"
-          viewport={{ once: true, margin: '-30px' }}
-          className="photo-cell"
-          style={{
-            width,
-            height,
-            position: 'relative',
-            cursor: 'pointer',
-            borderRadius: 2,
-            overflow: 'hidden',
-          }}
-          onClick={() => handleSelect(sourcePhoto, index)}
-        >
-          <img
-            src={photo.src}
-            alt={sourcePhoto.filename}
-            loading="lazy"
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-              display: 'block',
-            }}
-          />
-
-          {/* Hover overlay */}
-          <div
-            className="photo-hover-overlay"
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: overlay.photoGradient,
-              pointerEvents: 'none',
-            }}
-          />
-
-          {/* Favorite button */}
-          <button
-            className="photo-fav-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleFavorite(sourcePhoto);
-            }}
-            style={{
-              position: 'absolute',
-              top: 6,
-              right: 6,
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              color: sourcePhoto.isFavorite ? cssVar.accent : overlay.text,
-              filter: overlay.iconShadowStrong,
-              padding: 4,
-              zIndex: 2,
-            }}
-          >
-            <Heart
-              size={20}
-              weight={sourcePhoto.isFavorite ? 'fill' : 'regular'}
-            />
-          </button>
-
-          {/* Video badge */}
-          {sourcePhoto.type === 'video' && (
-            <div
-              style={{
-                position: 'absolute',
-                bottom: 6,
-                right: 6,
-                background: overlay.scrimHeavy,
-                borderRadius: '50%',
-                width: 26,
-                height: 26,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <span style={{ color: overlay.text, fontSize: 11 }}>&#9654;</span>
-            </div>
-          )}
-        </motion.div>
-      );
-    },
-    [allPhotos, handleSelect, handleFavorite],
-  );
 
   return (
     <>
@@ -316,12 +187,109 @@ export function PhotosPage() {
             </Typography.Text>
           </div>
         ) : (
-          <RowsPhotoAlbum
-            photos={albumPhotos}
-            targetRowHeight={targetRowHeight}
-            spacing={4}
-            render={{ photo: renderPhoto }}
-          />
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile
+                ? 'repeat(auto-fill, minmax(100px, 1fr))'
+                : 'repeat(auto-fill, minmax(180px, 1fr))',
+              gap: 4,
+              padding: '4px',
+            }}
+          >
+            {allPhotos.map((photo, index) => {
+              const isNew = !renderedRef.current.has(photo.id);
+              if (isNew) renderedRef.current.add(photo.id);
+
+              return (
+                <motion.div
+                  key={photo.id}
+                  variants={gridItemVariant}
+                  initial={isNew ? 'hidden' : false}
+                  whileInView="visible"
+                  viewport={{ once: true, margin: '-30px' }}
+                  className="photo-cell"
+                  style={{
+                    position: 'relative',
+                    cursor: 'pointer',
+                    borderRadius: 2,
+                    overflow: 'hidden',
+                    aspectRatio: '1 / 1',
+                  }}
+                  onClick={() => handleSelect(photo, index)}
+                >
+                  <img
+                    src={photo.thumbnailUrl}
+                    alt={photo.filename}
+                    loading="lazy"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      display: 'block',
+                    }}
+                  />
+
+                  {/* Hover overlay */}
+                  <div
+                    className="photo-hover-overlay"
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      background: overlay.photoGradient,
+                      pointerEvents: 'none',
+                    }}
+                  />
+
+                  {/* Favorite button */}
+                  <button
+                    className="photo-fav-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleFavorite(photo);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      top: 6,
+                      right: 6,
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: photo.isFavorite ? cssVar.accent : overlay.text,
+                      filter: overlay.iconShadowStrong,
+                      padding: 4,
+                      zIndex: 2,
+                    }}
+                  >
+                    <Heart
+                      size={20}
+                      weight={photo.isFavorite ? 'fill' : 'regular'}
+                    />
+                  </button>
+
+                  {/* Video badge */}
+                  {photo.type === 'video' && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        bottom: 6,
+                        right: 6,
+                        background: overlay.scrimHeavy,
+                        borderRadius: '50%',
+                        width: 26,
+                        height: 26,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <span style={{ color: overlay.text, fontSize: 11 }}>&#9654;</span>
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })}
+          </div>
         )}
 
         {/* Infinite scroll sentinel */}

@@ -56,27 +56,27 @@ body * {
 
 /* Theme-aware custom properties — all theme-variant values live here */
 [data-theme='light'] {
-  --sf-accent: #D97706;
-  --sf-accent-hover: #F59E0B;
-  --sf-accent-subtle: #FEF3C7;
+  --sf-accent: #7C3AED;
+  --sf-accent-hover: #A78BFA;
+  --sf-accent-subtle: #EDE9FE;
   --sf-avatar-bg: #525252;
   --sf-shadow-card: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
   --sf-shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.15);
   --sf-auth-bg: radial-gradient(ellipse at center, #262626 0%, #0a0a0a 70%);
-  --sf-dropzone-bg: #FEF3C7;
-  --sf-dropzone-border: #D97706;
+  --sf-dropzone-bg: #EDE9FE;
+  --sf-dropzone-border: #7C3AED;
 }
 
 [data-theme='dark'] {
-  --sf-accent: #F59E0B;
-  --sf-accent-hover: #D97706;
-  --sf-accent-subtle: #78350F;
+  --sf-accent: #A78BFA;
+  --sf-accent-hover: #7C3AED;
+  --sf-accent-subtle: #4C1D95;
   --sf-avatar-bg: #525252;
   --sf-shadow-card: 0 4px 12px rgba(0, 0, 0, 0.25), 0 2px 4px rgba(0, 0, 0, 0.15);
   --sf-shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.4);
   --sf-auth-bg: radial-gradient(ellipse at center, #262626 0%, #0a0a0a 70%);
-  --sf-dropzone-bg: #78350F;
-  --sf-dropzone-border: #F59E0B;
+  --sf-dropzone-bg: #4C1D95;
+  --sf-dropzone-border: #A78BFA;
 }
 
 /* Reduce motion */

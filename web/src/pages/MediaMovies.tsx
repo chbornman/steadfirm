@@ -1,11 +1,10 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { Select, Drawer, Typography, Spin, Button, Grid } from 'antd';
+import { Select, Typography, Spin, Button, Grid } from 'antd';
 import { Play } from '@phosphor-icons/react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { PosterGrid } from '@steadfirm/ui';
+import { PosterGrid, VideoPlayer, MediaViewer } from '@steadfirm/ui';
 import type { PosterGridItem } from '@steadfirm/ui';
-import { VideoPlayer } from '@steadfirm/ui';
 import { overlay, cssVar } from '@steadfirm/theme';
 import type { Movie, MovieListResponse } from '@steadfirm/shared';
 import { DEFAULT_PAGE_SIZE } from '@steadfirm/shared';
@@ -159,17 +158,15 @@ export function MediaMoviesPage() {
         </AnimatePresence>
       </div>
 
-      {/* Movie detail drawer */}
-      <Drawer
+      {/* Movie detail lightbox */}
+      <MediaViewer
         open={selectedMovie !== null}
         onClose={() => setSelectedMovie(null)}
-        width={isMobile ? '100%' : 480}
-        closable
-        title={null}
-        styles={{ body: { padding: 0 } }}
+        maxWidth={showPlayer ? 1100 : (isMobile ? '100vw' : 480)}
+        maxHeight={isMobile ? '100vh' : '90vh'}
       >
         {selectedMovie && (
-          <div>
+          <div style={{ width: '100%', overflow: 'auto' }}>
             {/* Player or poster */}
             {showPlayer ? (
               <VideoPlayer
@@ -240,7 +237,7 @@ export function MediaMoviesPage() {
             </div>
           </div>
         )}
-      </Drawer>
+      </MediaViewer>
     </>
   );
 }

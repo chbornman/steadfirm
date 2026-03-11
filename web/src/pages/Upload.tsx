@@ -106,8 +106,7 @@ export function UploadPage() {
     // destination tabs show the new items without a manual page refresh.
     const affectedServices = new Set(files.map((f) => f.service));
     for (const service of affectedServices) {
-      const queryKey = SERVICE_QUERY_KEYS[service];
-      if (queryKey) {
+      for (const queryKey of SERVICE_QUERY_KEYS[service]) {
         void queryClient.invalidateQueries({ queryKey });
       }
     }
