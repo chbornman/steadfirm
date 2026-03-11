@@ -39,6 +39,7 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    // Load .env from CWD (crates/backend/.env when run via cargo-watch)
     dotenvy::dotenv().ok();
 
     let mut config = config::Config::from_env()?;

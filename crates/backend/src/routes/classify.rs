@@ -48,7 +48,6 @@ async fn classify(
 
     // ── Step 2: Call LLM for files still below threshold ──
     let mut debug_info: Option<ClassifyDebugInfo> = None;
-
     if state.ai.is_enabled() {
         let low_confidence: Vec<(usize, &FileEntry)> = results
             .iter()
@@ -116,9 +115,11 @@ async fn classify(
 
 // ─── Server-side heuristics ──────────────────────────────────────────
 
-/// Classify a single file using server-side heuristics.
-/// Mirrors the TypeScript `classifyFile` logic but runs server-side for
-/// consistency and to enable batch-level analysis.
+/// Classify a single file using MIME / extension only.
+///
+/// This is a minimal first pass — ambiguous files (audio, video) get low
+/// confidence so they are sent to the LLM for proper classification with
+/// full context (folder structure, batch analysis, etc.).
 fn heuristic_classify(index: usize, file: &FileEntry) -> FileClassificationResult {
     let ext = file
         .filename
@@ -126,48 +127,37 @@ fn heuristic_classify(index: usize, file: &FileEntry) -> FileClassificationResul
         .next()
         .unwrap_or("")
         .to_lowercase();
-    let lower = file.filename.to_lowercase();
-    let folders = get_folder_segments(&file.relative_path);
-
-    let folder_suggests_audiobook = folders.iter().any(|f| {
-        f.contains("audiobook")
-            || f.contains("narrat")
-            || f.contains("unabridged")
-            || f.contains("abridged")
-            || f.contains("librivox")
-            || f.contains("audible")
-    });
 
     let (service, confidence) = match ext.as_str() {
-        // Photos
-        "jpg" | "jpeg" | "heic" | "png" | "webp" | "raw" | "dng" | "cr2" | "arw" | "nef"
-        | "orf" => (ServiceKind::Photos, 0.95),
+        // Photos — unambiguous
+        "jpg" | "jpeg" | "heic" | "png" | "webp" | "gif" | "raw" | "dng" | "cr2" | "arw"
+        | "nef" | "orf" => (ServiceKind::Photos, 0.95),
 
-        // Videos
-        "mp4" | "mov" | "mkv" | "avi" | "wmv" | "webm" | "flv" | "m4v" | "ts" => {
-            classify_video(&file.filename, file.size_bytes, &folders)
-        }
-
-        // Audiobook container
-        "m4b" => (ServiceKind::Audiobooks, 0.98),
-
-        // Audio
-        "mp3" | "flac" | "ogg" | "aac" | "wma" | "opus" | "m4a" | "wav" => {
-            classify_audio(&lower, file.size_bytes, folder_suggests_audiobook, &folders)
-        }
-
-        // Documents
+        // Documents — unambiguous
         "pdf" | "docx" | "doc" | "xlsx" | "xls" | "odt" | "ods" | "pptx" | "ppt" | "txt"
         | "rtf" | "csv" | "epub" => (ServiceKind::Documents, 0.92),
+
+        // M4B is always an audiobook
+        "m4b" => (ServiceKind::Audiobooks, 0.98),
+
+        // Video — could be personal, movie, or TV; let LLM decide
+        "mp4" | "mov" | "mkv" | "avi" | "wmv" | "webm" | "flv" | "m4v" | "ts" => {
+            (ServiceKind::Media, 0.5)
+        }
+
+        // Audio — could be music or audiobook; let LLM decide
+        "mp3" | "flac" | "ogg" | "aac" | "wma" | "opus" | "m4a" | "wav" => {
+            (ServiceKind::Media, 0.5)
+        }
 
         // MIME fallbacks
         _ => {
             if file.mime_type.starts_with("image/") {
                 (ServiceKind::Photos, 0.9)
-            } else if file.mime_type.starts_with("video/") {
-                classify_video(&file.filename, file.size_bytes, &folders)
-            } else if file.mime_type.starts_with("audio/") {
-                classify_audio(&lower, file.size_bytes, folder_suggests_audiobook, &folders)
+            } else if file.mime_type.starts_with("video/")
+                || file.mime_type.starts_with("audio/")
+            {
+                (ServiceKind::Media, 0.5)
             } else {
                 (ServiceKind::Files, 1.0)
             }
@@ -180,110 +170,6 @@ fn heuristic_classify(index: usize, file: &FileEntry) -> FileClassificationResul
         confidence,
         reasoning: None,
         ai_classified: false,
-    }
-}
-
-fn classify_video(filename: &str, size_bytes: u64, folders: &[String]) -> (ServiceKind, f32) {
-    // TV episode pattern
-    let tv_re = regex_lite::Regex::new(r"(?i)\bS\d{1,2}E\d{1,2}\b").unwrap();
-    if tv_re.is_match(filename) {
-        return (ServiceKind::Media, 0.92);
-    }
-
-    // Movie release patterns
-    let movie_re = regex_lite::Regex::new(
-        r"(?i)\b(?:720p|1080p|2160p|4k|bluray|blu-ray|bdrip|brrip|dvdrip|webrip|web-dl|hdtv|hdrip|remux|x264|x265|h\.?264|h\.?265|hevc)\b",
-    ).unwrap();
-    if movie_re.is_match(filename) {
-        return (ServiceKind::Media, 0.9);
-    }
-
-    // Home video patterns
-    let home_re = regex_lite::Regex::new(
-        r"(?i)^(?:IMG_|VID_|MVI_|MOV_|DSC_?|PXL_|Screen Recording|\d{4}-\d{2}-\d{2}|20\d{6}_\d{6})",
-    )
-    .unwrap();
-    if home_re.is_match(filename) {
-        return (ServiceKind::Photos, 0.92);
-    }
-
-    // Folder context
-    let parent = folders.last().map(|s| s.as_str()).unwrap_or("");
-    let folder_re =
-        regex_lite::Regex::new(r"(?i)^(movies?|films?|tv\s*shows?|series|media)$").unwrap();
-    if folder_re.is_match(parent) {
-        return (ServiceKind::Media, 0.85);
-    }
-
-    // Size heuristics
-    const SIZE_500MB: u64 = 500 * 1024 * 1024;
-    const SIZE_2GB: u64 = 2 * 1024 * 1024 * 1024;
-
-    if size_bytes > SIZE_2GB {
-        (ServiceKind::Media, 0.75)
-    } else if size_bytes < SIZE_500MB {
-        (ServiceKind::Photos, 0.7)
-    } else {
-        (ServiceKind::Media, 0.6)
-    }
-}
-
-fn classify_audio(
-    lower_filename: &str,
-    size_bytes: u64,
-    folder_suggests_audiobook: bool,
-    folders: &[String],
-) -> (ServiceKind, f32) {
-    if folder_suggests_audiobook {
-        return (ServiceKind::Audiobooks, 0.93);
-    }
-
-    let audiobook_keywords = [
-        "audiobook",
-        "chapter",
-        "narrat",
-        "unabridged",
-        "abridged",
-        "disc",
-        "part",
-        "book",
-    ];
-    if audiobook_keywords
-        .iter()
-        .any(|kw| lower_filename.contains(kw))
-    {
-        return (ServiceKind::Audiobooks, 0.85);
-    }
-
-    // Parent folder suggests music
-    let parent = folders.last().map(|s| s.as_str()).unwrap_or("");
-    let music_re = regex_lite::Regex::new(r"(?i)^(music|albums?|songs?|playlists?)$").unwrap();
-    if music_re.is_match(parent) {
-        return (ServiceKind::Media, 0.88);
-    }
-
-    const SIZE_100MB: u64 = 100 * 1024 * 1024;
-    if size_bytes > SIZE_100MB {
-        return (ServiceKind::Audiobooks, 0.7);
-    }
-
-    (ServiceKind::Media, 0.8)
-}
-
-fn get_folder_segments(relative_path: &Option<String>) -> Vec<String> {
-    match relative_path {
-        Some(path) => {
-            let parts: Vec<&str> = path.split('/').collect();
-            if parts.len() >= 2 {
-                parts[..parts.len() - 1]
-                    .iter()
-                    .map(|s| s.to_lowercase())
-                    .collect()
-            } else {
-                vec![]
-            }
-        }
-        None => vec![],
     }
 }
 

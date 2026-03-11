@@ -164,3 +164,22 @@ Run as part of the deploy pipeline or as a Docker Compose `init` container. Must
 3. **Phase 3:** Monitor connection usage per service and set per-service pool limits in PgBouncer to prevent any single service from starving others.
 
 **Priority:** Low for POC with a handful of users. Becomes important before scaling to many concurrent users or adding more services.
+
+---
+
+## File Classification Heuristics
+
+**Problem:** The drop zone classification currently uses only MIME type / file extension as a first pass, assigning low confidence (0.5) to all audio and video files so the LLM handles disambiguation. This works but means every audio/video upload requires an LLM call, adding latency and cost.
+
+**Goal:** Develop thoughtful heuristics that handle the common cases with high confidence, reserving LLM calls for genuinely ambiguous files. The heuristics should be developed incrementally based on real-world upload patterns rather than guessing upfront.
+
+**Heuristic candidates to evaluate:**
+
+1. **Batch analysis** — Many numbered audio files in the same folder (e.g. `01 Title.mp3` through `45 Title.mp3`) is a near-certain audiobook signal. Music albums rarely have 20+ tracks.
+2. **Folder name patterns** — Series numbering in folder names (`Book 01`, `Vol. 3`), known author names, book-title-like structures.
+3. **Video source detection** — Camera-generated filenames (`IMG_`, `VID_`, `PXL_`, `DSC_`, timestamp patterns) for personal videos vs scene release naming (`1080p`, `BluRay`, `x264`, `S01E02`) for movies/TV.
+4. **Audio file size distribution** — Audiobook chapters are typically 10-80MB per file; individual music tracks are typically 3-10MB.
+5. **Folder context keywords** — Explicit folder names like `Audiobooks/`, `Movies/`, `Music/`, `DCIM/`.
+6. **File count per folder** — A folder with 3-5 audio files is likely a music album; 15+ is likely an audiobook.
+
+**Approach:** Add heuristics one at a time, test against real uploads, measure how many files still fall through to the LLM. Each heuristic should have clear confidence scoring and be easy to disable if it causes misclassification.

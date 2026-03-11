@@ -235,10 +235,13 @@ impl AiClassifier {
             .preamble(CLASSIFICATION_SYSTEM_PROMPT)
             .build();
 
-        let result: LlmClassifyResult = extractor
-            .extract(user_prompt)
-            .await
-            .context("Anthropic extraction failed")?;
+        let result: LlmClassifyResult = match extractor.extract(user_prompt).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!(error = %e, debug = ?e, "Anthropic extraction failed");
+                return Err(anyhow::anyhow!("Anthropic extraction failed: {e:#}"));
+            }
+        };
 
         Ok(result)
     }

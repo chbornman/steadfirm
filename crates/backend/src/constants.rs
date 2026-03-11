@@ -57,7 +57,7 @@ pub const EXPECTED_SERVICE_COUNT: usize = 4;
 pub const AI_CONFIDENCE_THRESHOLD: f32 = 0.85;
 
 /// Default Anthropic model for classification.
-pub const DEFAULT_ANTHROPIC_MODEL: &str = "claude-sonnet-4-20250514";
+pub const DEFAULT_ANTHROPIC_MODEL: &str = "claude-sonnet-4-6";
 
 /// Default model name for local OpenAI-compatible servers.
 pub const DEFAULT_LOCAL_MODEL: &str = "default";
