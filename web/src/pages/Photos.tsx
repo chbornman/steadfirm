@@ -5,7 +5,7 @@ import { Heart } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RowsPhotoAlbum } from 'react-photo-album';
 import 'react-photo-album/rows.css';
-import { gridItem as gridItemVariant, colors } from '@steadfirm/theme';
+import { gridItem as gridItemVariant, overlay, cssVar } from '@steadfirm/theme';
 import type { Photo, PhotoListResponse } from '@steadfirm/shared';
 import { DEFAULT_PAGE_SIZE } from '@steadfirm/shared';
 import { api } from '@/api/client';
@@ -181,7 +181,7 @@ export function PhotosPage() {
             style={{
               position: 'absolute',
               inset: 0,
-              background: 'linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, transparent 50%)',
+              background: overlay.photoGradient,
               pointerEvents: 'none',
             }}
           />
@@ -197,11 +197,11 @@ export function PhotosPage() {
               position: 'absolute',
               top: 6,
               right: 6,
-              background: 'none',
+              background: 'transparent',
               border: 'none',
               cursor: 'pointer',
-              color: sourcePhoto.isFavorite ? colors.accentLight : '#fff',
-              filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.6))',
+              color: sourcePhoto.isFavorite ? cssVar.accent : overlay.text,
+              filter: overlay.iconShadowStrong,
               padding: 4,
               zIndex: 2,
             }}
@@ -219,7 +219,7 @@ export function PhotosPage() {
                 position: 'absolute',
                 bottom: 6,
                 right: 6,
-                background: 'rgba(0,0,0,0.6)',
+                background: overlay.scrimHeavy,
                 borderRadius: '50%',
                 width: 26,
                 height: 26,
@@ -228,7 +228,7 @@ export function PhotosPage() {
                 justifyContent: 'center',
               }}
             >
-              <span style={{ color: '#fff', fontSize: 11 }}>&#9654;</span>
+              <span style={{ color: overlay.text, fontSize: 11 }}>&#9654;</span>
             </div>
           )}
         </motion.div>

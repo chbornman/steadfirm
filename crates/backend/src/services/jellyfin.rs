@@ -2,7 +2,7 @@ use reqwest::Client;
 use serde_json::Value;
 
 use crate::error::AppError;
-use crate::proxy::check_upstream_status;
+use crate::proxy::{check_response, check_streaming_status};
 
 pub struct JellyfinClient {
     base_url: String,
@@ -22,8 +22,10 @@ impl JellyfinClient {
     /// Build the MediaBrowser Authorization header value.
     fn auth_header_value(&self, token: &str) -> String {
         format!(
-            r#"MediaBrowser Client="Steadfirm", Device="Steadfirm-Backend", DeviceId="{}", Version="1.0.0", Token="{}""#,
-            self.device_id, token
+            r#"MediaBrowser Client="Steadfirm", Device="Steadfirm-Backend", DeviceId="{}", Version="{}", Token="{}""#,
+            self.device_id,
+            env!("CARGO_PKG_VERSION"),
+            token,
         )
     }
 
@@ -48,7 +50,7 @@ impl JellyfinClient {
             .query(query)
             .send()
             .await?;
-        check_upstream_status("jellyfin", &resp)?;
+        let resp = check_response("jellyfin", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -64,7 +66,7 @@ impl JellyfinClient {
             .query(&[("userId", user_id)])
             .send()
             .await?;
-        check_upstream_status("jellyfin", &resp)?;
+        let resp = check_response("jellyfin", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -84,7 +86,7 @@ impl JellyfinClient {
             .query(&[("userId", user_id), ("fields", "Overview")])
             .send()
             .await?;
-        check_upstream_status("jellyfin", &resp)?;
+        let resp = check_response("jellyfin", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -110,7 +112,7 @@ impl JellyfinClient {
             ])
             .send()
             .await?;
-        check_upstream_status("jellyfin", &resp)?;
+        let resp = check_response("jellyfin", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -127,7 +129,7 @@ impl JellyfinClient {
             .query(query)
             .send()
             .await?;
-        check_upstream_status("jellyfin", &resp)?;
+        let resp = check_response("jellyfin", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -139,8 +141,14 @@ impl JellyfinClient {
     ) -> Result<reqwest::Response, AppError> {
         let mut url = format!("{}/Items/{item_id}/Images/Primary", self.base_url);
         let mut params = vec![
-            ("format", "Webp".to_string()),
-            ("quality", "90".to_string()),
+            (
+                "format",
+                crate::constants::JELLYFIN_IMAGE_FORMAT.to_string(),
+            ),
+            (
+                "quality",
+                crate::constants::JELLYFIN_IMAGE_QUALITY.to_string(),
+            ),
         ];
         if let Some(w) = max_width {
             params.push(("maxWidth", w.to_string()));
@@ -152,7 +160,7 @@ impl JellyfinClient {
         }
 
         let resp = self.http.get(&url).send().await?;
-        // Don't check_upstream_status for images — 404 just means no image.
+        // Don't check status for images — 404 just means no image.
         Ok(resp)
     }
 
@@ -177,7 +185,7 @@ impl JellyfinClient {
         }
 
         let resp = req.send().await?;
-        check_upstream_status("jellyfin", &resp)?;
+        check_streaming_status("jellyfin", &resp)?;
         Ok(resp)
     }
 
@@ -202,7 +210,7 @@ impl JellyfinClient {
         }
 
         let resp = req.send().await?;
-        check_upstream_status("jellyfin", &resp)?;
+        check_streaming_status("jellyfin", &resp)?;
         Ok(resp)
     }
 
@@ -223,7 +231,7 @@ impl JellyfinClient {
             }))
             .send()
             .await?;
-        check_upstream_status("jellyfin", &resp)?;
+        let resp = check_response("jellyfin", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -243,7 +251,7 @@ impl JellyfinClient {
             .json(policy)
             .send()
             .await?;
-        check_upstream_status("jellyfin", &resp)?;
+        check_response("jellyfin", resp).await?;
         Ok(())
     }
 
@@ -262,10 +270,10 @@ impl JellyfinClient {
         username: &str,
         password: &str,
     ) -> Result<Value, AppError> {
-        // For auth, we use a token-less header.
         let auth_value = format!(
-            r#"MediaBrowser Client="Steadfirm", Device="Steadfirm-Backend", DeviceId="{}", Version="1.0.0""#,
-            self.device_id
+            r#"MediaBrowser Client="Steadfirm", Device="Steadfirm-Backend", DeviceId="{}", Version="{}""#,
+            self.device_id,
+            env!("CARGO_PKG_VERSION"),
         );
         let resp = self
             .http
@@ -278,7 +286,7 @@ impl JellyfinClient {
             }))
             .send()
             .await?;
-        check_upstream_status("jellyfin", &resp)?;
+        let resp = check_response("jellyfin", resp).await?;
         Ok(resp.json().await?)
     }
 }

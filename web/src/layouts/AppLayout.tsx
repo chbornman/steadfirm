@@ -4,6 +4,7 @@ import { Layout, Dropdown, Avatar, Grid } from 'antd';
 import {
   ImagesSquare,
   FilmSlate,
+  MusicNote,
   FileText,
   Headphones,
   Folder,
@@ -14,7 +15,7 @@ import {
   SignOut,
   User,
 } from '@phosphor-icons/react';
-import { colors } from '@steadfirm/theme';
+import { cssVar } from '@steadfirm/theme';
 import { useTheme } from '@/hooks/useTheme';
 import { signOut } from '@/hooks/useAuth';
 import { useMusicPlayerStore } from '@/stores/music-player';
@@ -29,8 +30,9 @@ interface AppLayoutProps {
 }
 
 const navItems = [
-  { key: '/photos', label: 'Photos', icon: ImagesSquare },
-  { key: '/media/movies', label: 'Media', icon: FilmSlate, matchPrefix: '/media' },
+  { key: '/photos', label: 'Personal Media', icon: ImagesSquare },
+  { key: '/media/movies', label: 'Film & TV', icon: FilmSlate, matchPrefix: '/media' },
+  { key: '/music', label: 'Music', icon: MusicNote },
   { key: '/documents', label: 'Documents', icon: FileText },
   { key: '/audiobooks', label: 'Audiobooks', icon: Headphones },
   { key: '/files', label: 'Files', icon: Folder },
@@ -45,8 +47,14 @@ export function AppLayout({ children }: AppLayoutProps) {
   const { mode, cycleMode } = useTheme();
 
   const hasMusic = useMusicPlayerStore((s) => s.queue.length > 0);
+  const musicLastActive = useMusicPlayerStore((s) => s.lastActiveAt);
   const hasAudiobook = useAudiobookPlayerStore((s) => s.book !== null);
+  const audiobookLastActive = useAudiobookPlayerStore((s) => s.lastActiveAt);
   const hasPlayer = hasMusic || hasAudiobook;
+
+  // Only one player bar visible — whichever was most recently started/resumed wins
+  const showMusic = hasMusic && (!hasAudiobook || musicLastActive >= audiobookLastActive);
+  const showAudiobook = hasAudiobook && !showMusic;
 
   const ThemeIcon = mode === 'dark' ? Moon : mode === 'light' ? Sun : Desktop;
 
@@ -121,7 +129,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 width: 24,
                 height: 24,
                 borderRadius: 4,
-                background: colors.accent,
+                background: cssVar.accent,
               }}
             />
             <span style={{ fontWeight: 600, fontSize: 16 }}>Steadfirm</span>
@@ -145,7 +153,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                     border: 'none',
                     background: 'transparent',
                     cursor: 'pointer',
-                    borderBottom: isActive ? `2px solid ${colors.accent}` : '2px solid transparent',
+                    borderBottom: isActive ? `2px solid ${cssVar.accent}` : '2px solid transparent',
                     color: isActive ? 'var(--ant-color-text)' : 'var(--ant-color-text-secondary)',
                     fontWeight: isActive ? 600 : 400,
                     fontSize: 14,
@@ -206,7 +214,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               <Avatar
                 size={32}
                 icon={<User size={18} />}
-                style={{ cursor: 'pointer', background: colors.neutral600 }}
+                style={{ cursor: 'pointer', background: cssVar.avatarBg }}
               />
             </Dropdown>
           </div>
@@ -237,7 +245,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 width: 24,
                 height: 24,
                 borderRadius: 4,
-                background: colors.accent,
+                background: cssVar.accent,
               }}
             />
             <span style={{ fontWeight: 600, fontSize: 16 }}>Steadfirm</span>
@@ -246,7 +254,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             <Avatar
               size={32}
               icon={<User size={18} />}
-              style={{ cursor: 'pointer', background: colors.neutral600 }}
+              style={{ cursor: 'pointer', background: cssVar.avatarBg }}
             />
           </Dropdown>
         </Layout.Header>
@@ -263,9 +271,9 @@ export function AppLayout({ children }: AppLayoutProps) {
         {children}
       </Layout.Content>
 
-      {/* Persistent players (only one visible at a time) */}
-      {hasMusic && <MusicPlayerManager />}
-      {hasAudiobook && !hasMusic && <AudiobookPlayerManager />}
+      {/* Persistent players (only one visible at a time — most recently active wins) */}
+      {showMusic && <MusicPlayerManager />}
+      {showAudiobook && <AudiobookPlayerManager />}
 
       {/* Mobile bottom tab bar */}
       {isMobile && (
@@ -303,7 +311,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                   border: 'none',
                   background: 'transparent',
                   cursor: 'pointer',
-                  color: isActive ? colors.accent : 'var(--ant-color-text-secondary)',
+                  color: isActive ? cssVar.accent : 'var(--ant-color-text-secondary)',
                   fontSize: 10,
                   fontFamily: 'inherit',
                 }}

@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { PosterGrid } from '@steadfirm/ui';
 import type { PosterGridItem } from '@steadfirm/ui';
 import { VideoPlayer } from '@steadfirm/ui';
-import { colors } from '@steadfirm/theme';
+import { overlay, cssVar } from '@steadfirm/theme';
 import type { Movie, MovieListResponse } from '@steadfirm/shared';
 import { DEFAULT_PAGE_SIZE } from '@steadfirm/shared';
 import { api } from '@/api/client';
@@ -139,7 +139,7 @@ export function MediaMoviesPage() {
           <PosterGrid
             items={posterItems}
             onSelect={handleSelect}
-            hoverIcon={<Play size={40} weight="fill" color="#fff" />}
+            hoverIcon={<Play size={40} weight="fill" color={overlay.text} />}
           />
         )}
 
@@ -231,7 +231,7 @@ export function MediaMoviesPage() {
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: 8,
-                    background: colors.accent,
+                    background: cssVar.accent,
                   }}
                 >
                   Play

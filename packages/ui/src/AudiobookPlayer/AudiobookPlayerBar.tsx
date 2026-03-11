@@ -8,7 +8,7 @@ import {
   BookmarkSimple,
 } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { colors, ease } from '@steadfirm/theme';
+import { cssVar, ease } from '@steadfirm/theme';
 import { formatDuration } from '@steadfirm/shared';
 
 const { useBreakpoint } = Grid;
@@ -170,8 +170,8 @@ export function AudiobookPlayerBar({ state, onAction }: AudiobookPlayerBarProps)
                 tooltip={{ formatter: null }}
                 style={{ flex: 1, margin: 0 }}
                 styles={{
-                  track: { background: colors.accent },
-                  handle: { borderColor: colors.accent },
+                  track: { background: cssVar.accent },
+                  handle: { borderColor: cssVar.accent },
                 }}
               />
               <span
@@ -216,7 +216,7 @@ export function AudiobookPlayerBar({ state, onAction }: AudiobookPlayerBarProps)
             <button
               onClick={() => onAction({ type: 'cycleSpeed' })}
               style={{
-                background: 'none',
+                background: 'transparent',
                 border: '1px solid var(--ant-color-border)',
                 borderRadius: 4,
                 padding: '2px 6px',
@@ -255,14 +255,14 @@ function IconButton({
     <button
       onClick={onClick}
       style={{
-        background: 'none',
+        background: 'transparent',
         border: 'none',
         cursor: 'pointer',
         padding: 4,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        color: accent ? colors.accent : 'var(--ant-color-text-secondary)',
+        color: accent ? cssVar.accent : 'var(--ant-color-text-secondary)',
         borderRadius: 4,
       }}
     >

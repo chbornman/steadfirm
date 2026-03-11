@@ -176,7 +176,13 @@ async fn get_cover(
         ))?;
 
     let client = abs_client(&state);
-    let resp = client.get_cover(&cred.api_key, &id, Some(800)).await?;
+    let resp = client
+        .get_cover(
+            &cred.api_key,
+            &id,
+            Some(crate::constants::COVER_IMAGE_MAX_WIDTH),
+        )
+        .await?;
     proxy_binary(resp)
 }
 

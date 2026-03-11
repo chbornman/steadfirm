@@ -3,7 +3,7 @@ import { CloudArrowUp, Check, X } from '@phosphor-icons/react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { SERVICE_LABELS, SERVICE_COLORS, SERVICES, formatFileSize } from '@steadfirm/shared';
 import type { ServiceName } from '@steadfirm/shared';
-import { colors } from '@steadfirm/theme';
+import { colors, cssVar } from '@steadfirm/theme';
 
 export interface ClassifiedFile {
   file: File;
@@ -58,15 +58,15 @@ function SelectStep({ onFilesSelected }: { onFilesSelected: (files: File[]) => v
         }}
         style={{
           padding: '48px 24px',
-          borderColor: colors.accent,
+          borderColor: 'var(--sf-dropzone-border)',
           borderStyle: 'dashed',
           borderWidth: 2,
           borderRadius: 12,
-          background: colors.accentSubtle,
+          background: 'var(--sf-dropzone-bg)',
         }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-          <CloudArrowUp size={56} weight="duotone" color={colors.accent} />
+          <CloudArrowUp size={56} weight="duotone" color={cssVar.accent} />
           <Typography.Title level={4} style={{ margin: 0 }}>
             Drop files here or click to browse
           </Typography.Title>
@@ -174,7 +174,7 @@ function ReviewStep({
         <Button
           type="primary"
           onClick={onConfirm}
-          style={{ background: colors.accent, borderColor: colors.accent }}
+          style={{ background: cssVar.accent, borderColor: cssVar.accent }}
         >
           Upload All
         </Button>
@@ -257,7 +257,7 @@ function UploadStep({
                   size="small"
                   showInfo={false}
                   status={status === 'error' ? 'exception' : status === 'done' ? 'success' : 'active'}
-                  strokeColor={status === 'uploading' ? colors.accent : undefined}
+                  strokeColor={status === 'uploading' ? cssVar.accent : undefined}
                 />
               </div>
 
@@ -282,7 +282,7 @@ function UploadStep({
           <Button
             type="primary"
             onClick={onReset}
-            style={{ background: colors.accent, borderColor: colors.accent }}
+            style={{ background: cssVar.accent, borderColor: cssVar.accent }}
           >
             Upload More
           </Button>

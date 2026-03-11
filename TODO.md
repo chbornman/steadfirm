@@ -151,3 +151,16 @@ Run as part of the deploy pipeline or as a Docker Compose `init` container. Must
 5. Use `no-reply@steadfirm.io` as the from address (requires domain verification in Resend)
 
 **Priority:** Low for POC (5-10 known users, can reset passwords manually). Required before opening to wider audience.
+
+---
+
+## Connection Pooling
+
+**Problem:** Each Axum request that hits Postgres uses a connection from SQLx's pool, but there's no tuning or strategy around pool sizing, and no connection pooler (like PgBouncer) in front of Postgres. With multiple services (Immich, Paperless, BetterAuth, Steadfirm) all connecting independently, the combined connection count can exceed Postgres's `max_connections` under load — especially since Immich and Paperless each maintain their own pools.
+
+**Solution (phased):**
+1. **Immediate:** Tune SQLx pool settings (`max_connections`, `min_connections`, `acquire_timeout`) in the backend config. Set conservative limits that leave headroom for other services.
+2. **Phase 2:** Add PgBouncer as a connection pooler in front of Postgres. All services connect through PgBouncer instead of directly. This multiplexes many application connections onto fewer Postgres connections.
+3. **Phase 3:** Monitor connection usage per service and set per-service pool limits in PgBouncer to prevent any single service from starving others.
+
+**Priority:** Low for POC with a handful of users. Becomes important before scaling to many concurrent users or adding more services.

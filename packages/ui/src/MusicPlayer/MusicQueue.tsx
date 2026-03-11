@@ -1,5 +1,5 @@
 import { X } from '@phosphor-icons/react';
-import { colors } from '@steadfirm/theme';
+import { cssVar } from '@steadfirm/theme';
 import { formatDuration } from '@steadfirm/shared';
 import type { Track } from '@steadfirm/shared';
 
@@ -25,7 +25,7 @@ export function MusicQueue({ queue, currentIndex, onSelect, onRemove }: MusicQue
               gap: 10,
               padding: '8px 16px',
               cursor: 'pointer',
-              borderLeft: isCurrent ? `3px solid ${colors.accent}` : '3px solid transparent',
+              borderLeft: isCurrent ? `3px solid ${cssVar.accent}` : '3px solid transparent',
               background: isCurrent ? 'var(--ant-color-bg-container)' : 'transparent',
               transition: 'background 100ms ease',
             }}
@@ -40,7 +40,7 @@ export function MusicQueue({ queue, currentIndex, onSelect, onRemove }: MusicQue
                 style={{
                   fontSize: 13,
                   fontWeight: isCurrent ? 600 : 400,
-                  color: isCurrent ? colors.accent : 'var(--ant-color-text)',
+                  color: isCurrent ? cssVar.accent : 'var(--ant-color-text)',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
@@ -61,7 +61,7 @@ export function MusicQueue({ queue, currentIndex, onSelect, onRemove }: MusicQue
                 onRemove(index);
               }}
               style={{
-                background: 'none',
+                background: 'transparent',
                 border: 'none',
                 cursor: 'pointer',
                 padding: 4,

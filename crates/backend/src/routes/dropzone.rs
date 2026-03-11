@@ -66,9 +66,19 @@ async fn upload_file(
         return Err(AppError::BadRequest("filename is required".into()));
     }
 
+    let size_bytes = file_data.len();
     let mime_type = mime_guess::from_path(&filename)
         .first_or_octet_stream()
         .to_string();
+
+    tracing::info!(
+        user_id = %user.id,
+        filename = %filename,
+        service = %service,
+        mime_type = %mime_type,
+        size_bytes = size_bytes,
+        "upload started"
+    );
 
     match service.as_str() {
         "photos" => {
@@ -128,7 +138,7 @@ async fn upload_file(
                 .ok_or(AppError::ServiceUnavailable("media not provisioned".into()))?;
 
             // TODO: TMDb lookup for proper folder naming.
-            let media_dir = format!("/data/steadfirm/media/{}/Movies", user.id);
+            let media_dir = format!("{}/{}/Movies", state.config.media_storage_path, user.id);
             tokio::fs::create_dir_all(&media_dir)
                 .await
                 .map_err(|e| AppError::Internal(anyhow::anyhow!("mkdir error: {e}")))?;
@@ -156,7 +166,7 @@ async fn upload_file(
                     "audiobooks not provisioned".into(),
                 ))?;
 
-            let abs_dir = format!("/data/steadfirm/audiobooks/{}", user.id);
+            let abs_dir = format!("{}/{}", state.config.audiobooks_storage_path, user.id);
             tokio::fs::create_dir_all(&abs_dir)
                 .await
                 .map_err(|e| AppError::Internal(anyhow::anyhow!("mkdir error: {e}")))?;
@@ -200,6 +210,13 @@ async fn upload_file(
             return Err(AppError::BadRequest(format!("unknown service: {service}")));
         }
     }
+
+    tracing::info!(
+        user_id = %user.id,
+        filename = %filename,
+        service = %service,
+        "upload complete"
+    );
 
     Ok(Json(json!({
         "status": "routed",

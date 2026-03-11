@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
-import { gridContainer, gridItem as gridItemVariant } from '@steadfirm/theme';
+import { gridContainer, gridItem as gridItemVariant, overlay } from '@steadfirm/theme';
 
 export interface PosterGridItem {
   id: string;
@@ -72,7 +72,7 @@ export function PosterGrid({
               style={{
                 position: 'absolute',
                 inset: 0,
-                background: 'linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 50%)',
+                background: overlay.posterGradient,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',

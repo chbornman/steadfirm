@@ -2,7 +2,7 @@ use reqwest::Client;
 use serde_json::Value;
 
 use crate::error::AppError;
-use crate::proxy::check_upstream_status;
+use crate::proxy::{check_response, check_streaming_status};
 
 pub struct ImmichClient {
     base_url: String,
@@ -26,7 +26,7 @@ impl ImmichClient {
             .json(body)
             .send()
             .await?;
-        check_upstream_status("immich", &resp)?;
+        let resp = check_response("immich", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -38,7 +38,7 @@ impl ImmichClient {
             .header("x-api-key", api_key)
             .send()
             .await?;
-        check_upstream_status("immich", &resp)?;
+        let resp = check_response("immich", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -57,7 +57,7 @@ impl ImmichClient {
             .header("x-api-key", api_key)
             .send()
             .await?;
-        check_upstream_status("immich", &resp)?;
+        check_streaming_status("immich", &resp)?;
         Ok(resp)
     }
 
@@ -76,7 +76,7 @@ impl ImmichClient {
             .header("x-api-key", api_key)
             .send()
             .await?;
-        check_upstream_status("immich", &resp)?;
+        check_streaming_status("immich", &resp)?;
         Ok(resp)
     }
 
@@ -100,7 +100,7 @@ impl ImmichClient {
         }
 
         let resp = req.send().await?;
-        check_upstream_status("immich", &resp)?;
+        check_streaming_status("immich", &resp)?;
         Ok(resp)
     }
 
@@ -118,7 +118,7 @@ impl ImmichClient {
             .json(body)
             .send()
             .await?;
-        check_upstream_status("immich", &resp)?;
+        let resp = check_response("immich", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -135,7 +135,7 @@ impl ImmichClient {
             .multipart(form)
             .send()
             .await?;
-        check_upstream_status("immich", &resp)?;
+        let resp = check_response("immich", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -160,7 +160,7 @@ impl ImmichClient {
             }))
             .send()
             .await?;
-        check_upstream_status("immich", &resp)?;
+        let resp = check_response("immich", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -175,7 +175,7 @@ impl ImmichClient {
             }))
             .send()
             .await?;
-        check_upstream_status("immich", &resp)?;
+        let resp = check_response("immich", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -191,7 +191,7 @@ impl ImmichClient {
             }))
             .send()
             .await?;
-        check_upstream_status("immich", &resp)?;
+        let resp = check_response("immich", resp).await?;
         Ok(resp.json().await?)
     }
 }

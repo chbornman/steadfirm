@@ -12,7 +12,7 @@ import {
   Queue,
 } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { colors, ease } from '@steadfirm/theme';
+import { cssVar, ease } from '@steadfirm/theme';
 import { formatDuration } from '@steadfirm/shared';
 import type { Track } from '@steadfirm/shared';
 
@@ -121,7 +121,7 @@ export function MusicPlayerBar({ state, onAction }: MusicPlayerBarProps) {
                 onChange={(v) => onAction({ type: 'seek', time: v })}
                 tooltip={{ formatter: null }}
                 style={{ flex: 1, margin: 0 }}
-                styles={{ track: { background: colors.accent }, handle: { borderColor: colors.accent } }}
+                styles={{ track: { background: cssVar.accent }, handle: { borderColor: cssVar.accent } }}
               />
               <span style={{ fontSize: 11, color: 'var(--ant-color-text-secondary)', fontVariantNumeric: 'tabular-nums', minWidth: 36 }}>
                 {formatDuration(duration)}
@@ -166,7 +166,7 @@ export function MusicPlayerBar({ state, onAction }: MusicPlayerBarProps) {
               onChange={(v) => onAction({ type: 'volume', value: v })}
               style={{ width: 60, margin: 0 }}
               tooltip={{ formatter: null }}
-              styles={{ track: { background: colors.accent }, handle: { borderColor: colors.accent } }}
+              styles={{ track: { background: cssVar.accent }, handle: { borderColor: cssVar.accent } }}
             />
             <IconButton onClick={() => onAction({ type: 'toggleQueue' })}>
               <Queue size={16} />
@@ -193,7 +193,7 @@ function IconButton({
     <button
       onClick={onClick}
       style={{
-        background: 'none',
+        background: 'transparent',
         border: 'none',
         cursor: 'pointer',
         padding: 4,
@@ -201,9 +201,9 @@ function IconButton({
         alignItems: 'center',
         justifyContent: 'center',
         color: accent
-          ? colors.accent
+          ? cssVar.accent
           : active
-            ? colors.accentLight
+            ? cssVar.accentHover
             : 'var(--ant-color-text-secondary)',
         borderRadius: 4,
       }}

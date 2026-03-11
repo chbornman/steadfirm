@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { colors } from '@steadfirm/theme';
+import { cssVar } from '@steadfirm/theme';
 
 interface AuthLayoutProps {
   children: ReactNode;
@@ -13,7 +13,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: `radial-gradient(ellipse at center, ${colors.neutral800} 0%, ${colors.neutral950} 70%)`,
+        background: cssVar.authBg,
         padding: 16,
       }}
     >

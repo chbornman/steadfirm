@@ -3,7 +3,7 @@ import { RowsPhotoAlbum } from 'react-photo-album';
 import 'react-photo-album/rows.css';
 import { motion } from 'framer-motion';
 import { Heart, Play } from '@phosphor-icons/react';
-import { gridContainer, gridItem as gridItemVariant, colors } from '@steadfirm/theme';
+import { gridContainer, gridItem as gridItemVariant, overlay, cssVar } from '@steadfirm/theme';
 import type { Photo } from '@steadfirm/shared';
 
 export interface PhotoGridProps {
@@ -82,7 +82,7 @@ export function PhotoGrid({
               inset: 0,
               opacity: 0,
               transition: 'opacity 150ms ease-out',
-              background: 'linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, transparent 40%)',
+              background: overlay.photoGradientSubtle,
             }}
           >
             {onFavorite && (
@@ -95,11 +95,11 @@ export function PhotoGrid({
                   position: 'absolute',
                   top: 8,
                   right: 8,
-                  background: 'none',
+                  background: 'transparent',
                   border: 'none',
                   cursor: 'pointer',
-                  color: sourcePhoto.isFavorite ? colors.accent : '#fff',
-                  filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))',
+                  color: sourcePhoto.isFavorite ? cssVar.accent : overlay.text,
+                  filter: overlay.iconShadow,
                   padding: 4,
                 }}
               >
@@ -118,7 +118,7 @@ export function PhotoGrid({
                 position: 'absolute',
                 bottom: 8,
                 right: 8,
-                background: 'rgba(0,0,0,0.6)',
+                background: overlay.scrimHeavy,
                 borderRadius: '50%',
                 width: 28,
                 height: 28,
@@ -127,7 +127,7 @@ export function PhotoGrid({
                 justifyContent: 'center',
               }}
             >
-              <Play size={14} weight="fill" color="#fff" />
+              <Play size={14} weight="fill" color={overlay.text} />
             </div>
           )}
 

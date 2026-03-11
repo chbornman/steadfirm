@@ -60,6 +60,8 @@ services:
       BETTER_AUTH_DATABASE: postgresql://${DB_USER:-steadfirm}:${DB_PASSWORD}@postgres:5432/steadfirm
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?Set WEBHOOK_SECRET}
+      BACKEND_INTERNAL_URL: http://steadfirm-backend:3001
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,7 +85,9 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://${DB_USER:-steadfirm}:${DB_PASSWORD}@postgres:5432/steadfirm
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}
       BETTERAUTH_URL: http://betterauth:3002
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?Set WEBHOOK_SECRET}
       IMMICH_URL: http://immich-server:2283
       JELLYFIN_URL: http://jellyfin:8096
       PAPERLESS_URL: http://paperless:8000
@@ -170,6 +174,8 @@ services:
       PAPERLESS_REDIS: redis://valkey:6379
       PAPERLESS_OCR_LANGUAGE: eng
       PAPERLESS_URL: http://paperless:8000
+      PAPERLESS_ADMIN_USER: admin
+      PAPERLESS_ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}
     volumes:
       - paperless_data:/usr/src/paperless/data
       - paperless_media:/usr/src/paperless/media

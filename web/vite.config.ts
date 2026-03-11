@@ -9,8 +9,16 @@ export default defineConfig({
       '@': resolve(__dirname, 'src'),
     },
   },
+  optimizeDeps: {
+    include: [
+      '@vidstack/react',
+      'react-pdf',
+      'pdfjs-dist',
+    ],
+  },
   server: {
     port: 5173,
+    host: true,
     proxy: {
       '/api/auth': {
         target: 'http://localhost:3002',

@@ -23,15 +23,18 @@ export type AudiobookListResponse = PaginatedResponse<Audiobook>;
 export type FileListResponse = PaginatedResponse<UserFile>;
 
 export interface UploadResponse {
-  status: string;
-  service: string;
-  filename: string;
+  files: UploadedFileClassification[];
 }
 
-export interface ClassificationResult {
+export interface UploadedFileClassification {
+  uploadId: string;
   filename: string;
   mimeType: string;
   sizeBytes: number;
   suggestedService: 'photos' | 'media' | 'documents' | 'audiobooks' | 'files';
   confidence: number;
+}
+
+export interface UploadConfirmRequest {
+  files: { uploadId: string; service: string }[];
 }

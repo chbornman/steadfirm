@@ -1,10 +1,5 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
-fn deserialize_u32_from_str<'de, D: Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
-    let s: String = Deserialize::deserialize(d)?;
-    s.parse().map_err(serde::de::Error::custom)
-}
-
 fn deserialize_u32_from_str_opt<'de, D: Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
     #[derive(Deserialize)]
     #[serde(untagged)]
@@ -22,9 +17,15 @@ fn deserialize_u32_from_str_opt<'de, D: Deserializer<'de>>(d: D) -> Result<u32, 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PaginationParams {
-    #[serde(default = "default_page", deserialize_with = "deserialize_u32_from_str_opt")]
+    #[serde(
+        default = "default_page",
+        deserialize_with = "deserialize_u32_from_str_opt"
+    )]
     pub page: u32,
-    #[serde(default = "default_page_size", deserialize_with = "deserialize_u32_from_str_opt")]
+    #[serde(
+        default = "default_page_size",
+        deserialize_with = "deserialize_u32_from_str_opt"
+    )]
     pub page_size: u32,
 }
 
@@ -33,7 +34,7 @@ fn default_page() -> u32 {
 }
 
 fn default_page_size() -> u32 {
-    50
+    crate::constants::DEFAULT_PAGE_SIZE
 }
 
 /// Unified paginated response for the frontend.

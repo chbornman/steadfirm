@@ -2,7 +2,7 @@ use reqwest::Client;
 use serde_json::Value;
 
 use crate::error::AppError;
-use crate::proxy::check_upstream_status;
+use crate::proxy::{check_response, check_streaming_status};
 
 pub struct PaperlessClient {
     base_url: String,
@@ -36,7 +36,7 @@ impl PaperlessClient {
             .query(query)
             .send()
             .await?;
-        check_upstream_status("paperless", &resp)?;
+        let resp = check_response("paperless", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -51,7 +51,7 @@ impl PaperlessClient {
             .query(&[("truncate_content", "true")])
             .send()
             .await?;
-        check_upstream_status("paperless", &resp)?;
+        let resp = check_response("paperless", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -69,7 +69,7 @@ impl PaperlessClient {
             )
             .send()
             .await?;
-        check_upstream_status("paperless", &resp)?;
+        check_streaming_status("paperless", &resp)?;
         Ok(resp)
     }
 
@@ -87,7 +87,7 @@ impl PaperlessClient {
             )
             .send()
             .await?;
-        check_upstream_status("paperless", &resp)?;
+        check_streaming_status("paperless", &resp)?;
         Ok(resp)
     }
 
@@ -101,7 +101,7 @@ impl PaperlessClient {
             )
             .send()
             .await?;
-        check_upstream_status("paperless", &resp)?;
+        check_streaming_status("paperless", &resp)?;
         Ok(resp)
     }
 
@@ -109,10 +109,10 @@ impl PaperlessClient {
     pub async fn list_tags(&self, token: &str) -> Result<Value, AppError> {
         let resp = self
             .request(reqwest::Method::GET, "/api/tags/", token)
-            .query(&[("page_size", "1000")])
+            .query(&[("page_size", crate::constants::PAPERLESS_METADATA_PAGE_SIZE)])
             .send()
             .await?;
-        check_upstream_status("paperless", &resp)?;
+        let resp = check_response("paperless", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -120,10 +120,10 @@ impl PaperlessClient {
     pub async fn list_correspondents(&self, token: &str) -> Result<Value, AppError> {
         let resp = self
             .request(reqwest::Method::GET, "/api/correspondents/", token)
-            .query(&[("page_size", "1000")])
+            .query(&[("page_size", crate::constants::PAPERLESS_METADATA_PAGE_SIZE)])
             .send()
             .await?;
-        check_upstream_status("paperless", &resp)?;
+        let resp = check_response("paperless", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -140,12 +140,33 @@ impl PaperlessClient {
             .multipart(form)
             .send()
             .await?;
-        check_upstream_status("paperless", &resp)?;
-        // Paperless returns task ID, not the document itself.
+        let resp = check_response("paperless", resp).await?;
         Ok(resp.json().await?)
     }
 
     // --- Admin endpoints (for provisioning) ---
+
+    /// Set user permissions via admin API.
+    pub async fn admin_set_user_permissions(
+        &self,
+        admin_token: &str,
+        user_id: &str,
+        permissions: &[&str],
+    ) -> Result<Value, AppError> {
+        let resp = self
+            .request(
+                reqwest::Method::PATCH,
+                &format!("/api/users/{user_id}/"),
+                admin_token,
+            )
+            .json(&serde_json::json!({
+                "user_permissions": permissions,
+            }))
+            .send()
+            .await?;
+        let resp = check_response("paperless", resp).await?;
+        Ok(resp.json().await?)
+    }
 
     /// Create a user via admin API.
     pub async fn admin_create_user(
@@ -164,7 +185,7 @@ impl PaperlessClient {
             }))
             .send()
             .await?;
-        check_upstream_status("paperless", &resp)?;
+        let resp = check_response("paperless", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -180,7 +201,7 @@ impl PaperlessClient {
             }))
             .send()
             .await?;
-        check_upstream_status("paperless", &resp)?;
+        let resp = check_response("paperless", resp).await?;
         Ok(resp.json().await?)
     }
 }

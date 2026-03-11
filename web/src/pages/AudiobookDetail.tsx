@@ -5,7 +5,7 @@ import { Button, Segmented, Typography, Spin, Progress, Grid } from 'antd';
 import { Play, BookmarkSimple } from '@phosphor-icons/react';
 import { motion } from 'framer-motion';
 import { AudiobookChapters } from '@steadfirm/ui';
-import { colors, slideUp } from '@steadfirm/theme';
+import { cssVar, slideUp } from '@steadfirm/theme';
 import { formatDuration } from '@steadfirm/shared';
 import { audiobookQueries, startPlayback } from '@/api/audiobooks';
 import { useAudiobookPlayerStore } from '@/stores/audiobook-player';
@@ -105,7 +105,7 @@ export function AudiobookDetailPage() {
             aspectRatio: '2 / 3',
             borderRadius: 8,
             objectFit: 'cover',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+            boxShadow: cssVar.shadowElevated,
           }}
         />
 
@@ -137,7 +137,7 @@ export function AudiobookDetailPage() {
             <div style={{ marginTop: 16, maxWidth: 300, margin: isMobile ? '16px auto 0' : '16px 0 0' }}>
               <Progress
                 percent={Math.round(progress * 100)}
-                strokeColor={colors.accent}
+                strokeColor={cssVar.accent}
                 size="small"
               />
             </div>
@@ -166,7 +166,7 @@ export function AudiobookDetailPage() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: 8,
-                background: colors.accent,
+                background: cssVar.accent,
                 width: isMobile ? '100%' : undefined,
               }}
             >

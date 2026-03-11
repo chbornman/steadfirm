@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Segmented, Typography, Drawer, Spin, Grid } from 'antd';
 import { ArrowLeft, Play } from '@phosphor-icons/react';
 import { VideoPlayer } from '@steadfirm/ui';
+import { overlay } from '@steadfirm/theme';
 import type { Season, Episode } from '@steadfirm/shared';
 import { showQueries } from '@/api/media';
 
@@ -61,7 +62,7 @@ export function MediaShowDetailPage() {
           position: 'relative',
           width: '100%',
           minHeight: 300,
-          background: `linear-gradient(to bottom, rgba(0,0,0,0.7), var(--ant-color-bg-layout))`,
+          background: overlay.heroGradient,
           overflow: 'hidden',
         }}
       >
@@ -97,7 +98,7 @@ export function MediaShowDetailPage() {
               position: 'absolute',
               top: 16,
               left: 16,
-              background: 'rgba(0,0,0,0.5)',
+              background: overlay.scrim,
               border: 'none',
               borderRadius: 8,
               width: 36,
@@ -106,7 +107,7 @@ export function MediaShowDetailPage() {
               alignItems: 'center',
               justifyContent: 'center',
               cursor: 'pointer',
-              color: '#fff',
+              color: overlay.text,
             }}
           >
             <ArrowLeft size={20} />
@@ -124,15 +125,15 @@ export function MediaShowDetailPage() {
             }}
           />
           <div>
-            <Typography.Title level={2} style={{ color: '#fff', margin: 0 }}>
+            <Typography.Title level={2} style={{ color: overlay.text, margin: 0 }}>
               {typedShow.title}
             </Typography.Title>
-            <div style={{ color: 'rgba(255,255,255,0.7)', marginTop: 8 }}>
+            <div style={{ color: overlay.textMuted, marginTop: 8 }}>
               {typedShow.year} &middot; {typedShow.seasonCount} season
               {typedShow.seasonCount !== 1 ? 's' : ''}
             </div>
             <Typography.Paragraph
-              style={{ color: 'rgba(255,255,255,0.8)', marginTop: 12, maxWidth: 500 }}
+              style={{ color: overlay.textSubtle, marginTop: 12, maxWidth: 500 }}
               ellipsis={{ rows: 3, expandable: true }}
             >
               {typedShow.overview}
@@ -206,12 +207,12 @@ export function MediaShowDetailPage() {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      background: 'rgba(0,0,0,0.3)',
+                      background: overlay.scrimLight,
                       opacity: 0,
                       transition: 'opacity 150ms ease',
                     }}
                   >
-                    <Play size={28} weight="fill" color="#fff" />
+                    <Play size={28} weight="fill" color={overlay.text} />
                   </div>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>

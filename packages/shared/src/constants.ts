@@ -2,8 +2,8 @@ export const SERVICES = ['photos', 'media', 'documents', 'audiobooks', 'files'] 
 export type ServiceName = (typeof SERVICES)[number];
 
 export const SERVICE_LABELS: Record<ServiceName, string> = {
-  photos: 'Photos',
-  media: 'Media',
+  photos: 'Personal Media',
+  media: 'Film & TV',
   documents: 'Documents',
   audiobooks: 'Audiobooks',
   files: 'Files',
@@ -30,7 +30,8 @@ export const ROUTES = {
   MEDIA: '/media',
   MEDIA_MOVIES: '/media/movies',
   MEDIA_SHOWS: '/media/shows',
-  MEDIA_MUSIC: '/media/music',
+  MUSIC: '/music',
+  MUSIC_ARTIST: '/music/$artistId',
   DOCUMENTS: '/documents',
   AUDIOBOOKS: '/audiobooks',
   FILES: '/files',

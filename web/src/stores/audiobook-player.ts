@@ -10,6 +10,7 @@ interface AudiobookPlayerState {
   isPlaying: boolean;
   sessionId: string | null;
   streamUrl: string | null;
+  lastActiveAt: number;
 
   startBook: (
     book: Audiobook,
@@ -36,6 +37,7 @@ export const useAudiobookPlayerStore = create<AudiobookPlayerState>()((set, get)
   isPlaying: false,
   sessionId: null,
   streamUrl: null,
+  lastActiveAt: 0,
 
   startBook: (book, chapters, sessionId, streamUrl, resumePosition) => {
     const position = resumePosition ?? 0;
@@ -48,11 +50,12 @@ export const useAudiobookPlayerStore = create<AudiobookPlayerState>()((set, get)
       isPlaying: true,
       sessionId,
       streamUrl,
+      lastActiveAt: Date.now(),
     });
   },
 
   pause: () => set({ isPlaying: false }),
-  resume: () => set({ isPlaying: true }),
+  resume: () => set({ isPlaying: true, lastActiveAt: Date.now() }),
 
   seekTo: (seconds) => {
     const { chapters } = get();

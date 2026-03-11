@@ -1,6 +1,9 @@
 export { PhotoGrid } from './PhotoGrid';
 export type { PhotoGridProps } from './PhotoGrid';
 
+export { PhotoLightbox } from './PhotoGrid';
+export type { PhotoLightboxProps } from './PhotoGrid';
+
 export { PosterGrid } from './PosterGrid';
 export type { PosterGridProps, PosterGridItem } from './PosterGrid';
 
@@ -15,6 +18,9 @@ export type { MusicQueueProps } from './MusicPlayer';
 
 export { DocumentViewer } from './DocumentViewer';
 export type { DocumentViewerProps } from './DocumentViewer';
+
+export { DocumentCard } from './DocumentViewer';
+export type { DocumentCardProps } from './DocumentViewer';
 
 export { AudiobookPlayerBar } from './AudiobookPlayer';
 export type {

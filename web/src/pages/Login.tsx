@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from '@tanstack/react-router';
 import { Card, Form, Input, Button, Typography, Divider, App } from 'antd';
 import { GoogleLogo } from '@phosphor-icons/react';
-import { colors } from '@steadfirm/theme';
+import { cssVar } from '@steadfirm/theme';
 import { signIn } from '@/hooks/useAuth';
 import { AuthLayout } from '@/layouts/AuthLayout';
 
@@ -53,7 +53,7 @@ export function LoginPage() {
             width: 48,
             height: 48,
             borderRadius: 8,
-            background: colors.accent,
+            background: cssVar.accent,
             margin: '0 auto 16px',
           }}
         />
@@ -116,7 +116,7 @@ export function LoginPage() {
         <div style={{ textAlign: 'center', marginTop: 20 }}>
           <Text type="secondary">
             No account?{' '}
-            <Link to="/signup" style={{ color: colors.accent }}>
+            <Link to="/signup" style={{ color: cssVar.accent }}>
               Sign up
             </Link>
           </Text>

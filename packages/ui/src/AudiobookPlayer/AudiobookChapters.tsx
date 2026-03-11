@@ -1,5 +1,5 @@
 import { formatDuration } from '@steadfirm/shared';
-import { colors } from '@steadfirm/theme';
+import { cssVar } from '@steadfirm/theme';
 
 export interface AudiobookChaptersProps {
   chapters: { id: string; title: string; start: number; end: number }[];
@@ -25,7 +25,7 @@ export function AudiobookChapters({ chapters, currentChapter, onSelect }: Audiob
               padding: '12px 16px',
               border: 'none',
               borderLeft: isCurrent
-                ? `3px solid ${colors.accent}`
+                ? `3px solid ${cssVar.accent}`
                 : '3px solid transparent',
               background: isCurrent
                 ? 'var(--ant-color-bg-text-hover)'
@@ -51,7 +51,7 @@ export function AudiobookChapters({ chapters, currentChapter, onSelect }: Audiob
                 style={{
                   fontSize: 14,
                   fontWeight: isCurrent ? 500 : 400,
-                  color: isCurrent ? colors.accent : 'var(--ant-color-text)',
+                  color: isCurrent ? cssVar.accent : 'var(--ant-color-text)',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',

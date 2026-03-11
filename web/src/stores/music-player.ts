@@ -8,6 +8,7 @@ interface MusicPlayerState {
   repeat: 'off' | 'all' | 'one';
   shuffle: boolean;
   isPlaying: boolean;
+  lastActiveAt: number;
 
   play: (track: Track, queue?: Track[]) => void;
   pause: () => void;
@@ -39,6 +40,7 @@ export const useMusicPlayerStore = create<MusicPlayerState>()((set, get) => ({
   repeat: 'off',
   shuffle: false,
   isPlaying: false,
+  lastActiveAt: 0,
 
   play: (track, queue) => {
     const newQueue = queue ?? [track];
@@ -48,11 +50,12 @@ export const useMusicPlayerStore = create<MusicPlayerState>()((set, get) => ({
       currentIndex: index >= 0 ? index : 0,
       isPlaying: true,
       shuffledIndices: null,
+      lastActiveAt: Date.now(),
     });
   },
 
   pause: () => set({ isPlaying: false }),
-  resume: () => set({ isPlaying: true }),
+  resume: () => set({ isPlaying: true, lastActiveAt: Date.now() }),
 
   next: () => {
     const { queue, currentIndex, repeat, shuffledIndices } = get();
@@ -135,5 +138,5 @@ export const useMusicPlayerStore = create<MusicPlayerState>()((set, get) => ({
     });
   },
 
-  clearQueue: () => set({ queue: [], currentIndex: 0, isPlaying: false, shuffledIndices: null }),
+  clearQueue: () => set({ queue: [], currentIndex: 0, isPlaying: false, shuffledIndices: null, lastActiveAt: 0 }),
 }));

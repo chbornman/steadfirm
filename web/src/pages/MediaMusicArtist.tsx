@@ -3,14 +3,14 @@ import { useParams, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Typography, Spin, Button } from 'antd';
 import { ArrowLeft, Play, MusicNote } from '@phosphor-icons/react';
-import { colors } from '@steadfirm/theme';
+import { cssVar } from '@steadfirm/theme';
 import type { Album, Track } from '@steadfirm/shared';
 import { formatDuration } from '@steadfirm/shared';
 import { musicQueries } from '@/api/media';
 import { useMusicPlayerStore } from '@/stores/music-player';
 
 export function MediaMusicArtistPage() {
-  const { artistId } = useParams({ from: '/media/music/$artistId' as never });
+  const { artistId } = useParams({ from: '/music/$artistId' as never });
   const navigate = useNavigate();
   const musicPlayer = useMusicPlayerStore();
 
@@ -32,12 +32,12 @@ export function MediaMusicArtistPage() {
     <div style={{ maxWidth: 800, margin: '0 auto', padding: '24px 24px 64px' }}>
       {/* Back button */}
       <button
-        onClick={() => void navigate({ to: '/media/music' })}
+        onClick={() => void navigate({ to: '/music' })}
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          background: 'none',
+          background: 'transparent',
           border: 'none',
           cursor: 'pointer',
           color: 'var(--ant-color-text-secondary)',
@@ -130,7 +130,7 @@ function AlbumSection({ album, onPlayAlbum }: { album: Album; onPlayAlbum: (trac
                 setExpanded(true);
               }
             }}
-            style={{ color: colors.accent, padding: '0 8px', marginTop: 4, fontSize: 12 }}
+            style={{ color: cssVar.accent, padding: '0 8px', marginTop: 4, fontSize: 12 }}
           >
             Play Album
           </Button>
@@ -160,7 +160,7 @@ function AlbumSection({ album, onPlayAlbum }: { album: Album; onPlayAlbum: (trac
                     padding: '8px 16px',
                     cursor: 'pointer',
                     transition: 'background 100ms ease',
-                    borderLeft: isCurrent ? `3px solid ${colors.accent}` : '3px solid transparent',
+                    borderLeft: isCurrent ? `3px solid ${cssVar.accent}` : '3px solid transparent',
                   }}
                 >
                   <span
@@ -168,7 +168,7 @@ function AlbumSection({ album, onPlayAlbum }: { album: Album; onPlayAlbum: (trac
                       width: 24,
                       textAlign: 'center',
                       fontSize: 12,
-                      color: isCurrent ? colors.accent : 'var(--ant-color-text-secondary)',
+                      color: isCurrent ? cssVar.accent : 'var(--ant-color-text-secondary)',
                       fontWeight: isCurrent ? 600 : 400,
                     }}
                   >
@@ -179,7 +179,7 @@ function AlbumSection({ album, onPlayAlbum }: { album: Album; onPlayAlbum: (trac
                       flex: 1,
                       fontSize: 13,
                       fontWeight: isCurrent ? 600 : 400,
-                      color: isCurrent ? colors.accent : 'var(--ant-color-text)',
+                      color: isCurrent ? cssVar.accent : 'var(--ant-color-text)',
                     }}
                   >
                     {track.title}

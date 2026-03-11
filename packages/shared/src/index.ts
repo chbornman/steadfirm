@@ -22,8 +22,9 @@ export type {
   AudiobookListResponse,
   FileListResponse,
   UploadResponse,
+  UploadedFileClassification,
+  UploadConfirmRequest,
 } from './types/api';
-export type { ClassificationResult as ApiClassificationResult } from './types/api';
 
 export type { User, Session, UserProfile } from './types/auth';
 

@@ -5,7 +5,7 @@ import { Headphones } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PosterGrid } from '@steadfirm/ui';
 import type { PosterGridItem } from '@steadfirm/ui';
-import { colors, gridItem } from '@steadfirm/theme';
+import { gridItem, overlay, cssVar } from '@steadfirm/theme';
 import type { AudiobookListResponse, Audiobook } from '@steadfirm/shared';
 import { DEFAULT_PAGE_SIZE } from '@steadfirm/shared';
 import { api } from '@/api/client';
@@ -133,7 +133,7 @@ export function AudiobooksPage() {
               items={posterItems}
               onSelect={handleSelect}
               aspectRatio="2 / 3"
-              hoverIcon={<Headphones size={40} weight="fill" color="#fff" />}
+              hoverIcon={<Headphones size={40} weight="fill" color={overlay.text} />}
             />
           </div>
         </>
@@ -202,14 +202,14 @@ function ContinueCard({ book, isMobile }: { book: Audiobook; isMobile: boolean }
             left: 0,
             right: 0,
             height: 3,
-            background: 'rgba(0,0,0,0.3)',
+            background: overlay.scrimLight,
           }}
         >
           <div
             style={{
               height: '100%',
               width: `${progress * 100}%`,
-              background: colors.accent,
+              background: cssVar.accent,
               borderRadius: '0 2px 2px 0',
             }}
           />

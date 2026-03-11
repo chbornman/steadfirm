@@ -1,4 +1,4 @@
-export { colors, spacing, radii, typography } from './tokens';
+export { colors, spacing, radii, typography, overlay, shadows, cssVar } from './tokens';
 export { lightTheme, darkTheme } from './antd-theme';
 export {
   duration,

@@ -2,7 +2,7 @@ use reqwest::Client;
 use serde_json::Value;
 
 use crate::error::AppError;
-use crate::proxy::check_upstream_status;
+use crate::proxy::{check_response, check_streaming_status};
 
 pub struct AudiobookshelfClient {
     base_url: String,
@@ -40,7 +40,7 @@ impl AudiobookshelfClient {
             .query(query)
             .send()
             .await?;
-        check_upstream_status("audiobookshelf", &resp)?;
+        let resp = check_response("audiobookshelf", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -55,7 +55,7 @@ impl AudiobookshelfClient {
             .query(&[("include", "progress,rssfeed"), ("expanded", "1")])
             .send()
             .await?;
-        check_upstream_status("audiobookshelf", &resp)?;
+        let resp = check_response("audiobookshelf", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -75,7 +75,7 @@ impl AudiobookshelfClient {
             req = req.query(&[("width", w.to_string())]);
         }
         let resp = req.send().await?;
-        check_upstream_status("audiobookshelf", &resp)?;
+        check_streaming_status("audiobookshelf", &resp)?;
         Ok(resp)
     }
 
@@ -100,7 +100,7 @@ impl AudiobookshelfClient {
             }))
             .send()
             .await?;
-        check_upstream_status("audiobookshelf", &resp)?;
+        let resp = check_response("audiobookshelf", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -120,7 +120,7 @@ impl AudiobookshelfClient {
             .json(body)
             .send()
             .await?;
-        check_upstream_status("audiobookshelf", &resp)?;
+        check_response("audiobookshelf", resp).await?;
         Ok(())
     }
 
@@ -128,10 +128,13 @@ impl AudiobookshelfClient {
     pub async fn listening_sessions(&self, token: &str) -> Result<Value, AppError> {
         let resp = self
             .request(reqwest::Method::GET, "/api/me/listening-sessions", token)
-            .query(&[("itemsPerPage", "10")])
+            .query(&[(
+                "itemsPerPage",
+                crate::constants::AUDIOBOOKSHELF_SESSIONS_PAGE_SIZE,
+            )])
             .send()
             .await?;
-        check_upstream_status("audiobookshelf", &resp)?;
+        let resp = check_response("audiobookshelf", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -151,7 +154,7 @@ impl AudiobookshelfClient {
             .json(body)
             .send()
             .await?;
-        check_upstream_status("audiobookshelf", &resp)?;
+        let resp = check_response("audiobookshelf", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -173,7 +176,7 @@ impl AudiobookshelfClient {
         }
 
         let resp = req.send().await?;
-        check_upstream_status("audiobookshelf", &resp)?;
+        check_streaming_status("audiobookshelf", &resp)?;
         Ok(resp)
     }
 
@@ -183,7 +186,7 @@ impl AudiobookshelfClient {
             .request(reqwest::Method::GET, "/api/libraries", token)
             .send()
             .await?;
-        check_upstream_status("audiobookshelf", &resp)?;
+        let resp = check_response("audiobookshelf", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -205,7 +208,7 @@ impl AudiobookshelfClient {
             }))
             .send()
             .await?;
-        check_upstream_status("audiobookshelf", &resp)?;
+        let resp = check_response("audiobookshelf", resp).await?;
         Ok(resp.json().await?)
     }
 
@@ -224,7 +227,7 @@ impl AudiobookshelfClient {
             .json(&serde_json::json!({ "isActive": true }))
             .send()
             .await?;
-        check_upstream_status("audiobookshelf", &resp)?;
+        check_response("audiobookshelf", resp).await?;
         Ok(())
     }
 
@@ -232,14 +235,14 @@ impl AudiobookshelfClient {
     pub async fn login(&self, username: &str, password: &str) -> Result<Value, AppError> {
         let resp = self
             .http
-            .post(format!("{}/api/login", self.base_url))
+            .post(format!("{}/login", self.base_url))
             .json(&serde_json::json!({
                 "username": username,
                 "password": password,
             }))
             .send()
             .await?;
-        check_upstream_status("audiobookshelf", &resp)?;
+        let resp = check_response("audiobookshelf", resp).await?;
         Ok(resp.json().await?)
     }
 }

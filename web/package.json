@@ -17,6 +17,7 @@
     "@steadfirm/ui": "workspace:*",
     "@tanstack/react-query": "^5.75.5",
     "@tanstack/react-router": "^1.120.5",
+    "@vidstack/react": "^1.12.13",
     "antd": "^5.25.1",
     "better-auth": "^1.2.0",
     "dayjs": "^1.11.13",
@@ -24,6 +25,7 @@
     "ky": "^1.8.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-pdf": "^10.4.1",
     "react-photo-album": "^3.5.1",
     "zustand": "^5.0.5"
   },

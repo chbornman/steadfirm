@@ -1,14 +1,17 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { Slider } from 'antd';
 import {
   Play,
   Pause,
   SpeakerHigh,
+  SpeakerLow,
   SpeakerSlash,
   CornersOut,
 } from '@phosphor-icons/react';
-import { colors } from '@steadfirm/theme';
+import { overlay, cssVar } from '@steadfirm/theme';
 import { formatDuration } from '@steadfirm/shared';
+import { MediaPlayer, MediaProvider, useMediaState, useMediaRemote } from '@vidstack/react';
+import type { MediaPlayerInstance } from '@vidstack/react';
 
 export interface VideoPlayerProps {
   src: string;
@@ -16,27 +19,34 @@ export interface VideoPlayerProps {
   onClose?: () => void;
 }
 
-export function VideoPlayer({ src, poster }: VideoPlayerProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+/**
+ * Inner component that must render inside <MediaPlayer> so the
+ * context-based hooks (useMediaState, useMediaRemote) resolve correctly.
+ */
+function VideoPlayerControls({
+  containerRef,
+}: {
+  containerRef: React.RefObject<HTMLDivElement | null>;
+}) {
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const [playing, setPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(1);
-  const [muted, setMuted] = useState(false);
   const [showControls, setShowControls] = useState(true);
+  const [localVolume, setLocalVolume] = useState(1);
 
-  const video = videoRef.current;
+  const paused = useMediaState('paused');
+  const currentTime = useMediaState('currentTime');
+  const duration = useMediaState('duration');
+  const muted = useMediaState('muted');
+  const buffered = useMediaState('bufferedEnd');
+
+  const remote = useMediaRemote();
 
   const resetHideTimer = useCallback(() => {
     setShowControls(true);
     if (hideTimer.current) clearTimeout(hideTimer.current);
     hideTimer.current = setTimeout(() => {
-      if (playing) setShowControls(false);
+      if (!paused) setShowControls(false);
     }, 3000);
-  }, [playing]);
+  }, [paused]);
 
   useEffect(() => {
     return () => {
@@ -44,46 +54,43 @@ export function VideoPlayer({ src, poster }: VideoPlayerProps) {
     };
   }, []);
 
+  // Show controls when paused
+  useEffect(() => {
+    if (paused) {
+      setShowControls(true);
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+    }
+  }, [paused]);
+
   const togglePlay = () => {
-    if (!video) return;
-    if (video.paused) {
-      void video.play();
-      setPlaying(true);
+    if (paused) {
+      remote.play();
     } else {
-      video.pause();
-      setPlaying(false);
+      remote.pause();
     }
     resetHideTimer();
   };
 
-  const handleTimeUpdate = () => {
-    if (video) setCurrentTime(video.currentTime);
-  };
-
-  const handleLoadedMetadata = () => {
-    if (video) setDuration(video.duration);
-  };
-
   const handleSeek = (value: number) => {
-    if (video) {
-      video.currentTime = value;
-      setCurrentTime(value);
-    }
+    remote.seek(value);
   };
 
   const handleVolume = (value: number) => {
-    if (video) {
-      video.volume = value;
-      setVolume(value);
-      setMuted(value === 0);
+    remote.changeVolume(value);
+    setLocalVolume(value);
+    if (value === 0) {
+      remote.mute();
+    } else if (muted) {
+      remote.unmute();
     }
   };
 
   const toggleMute = () => {
-    if (!video) return;
-    const newMuted = !muted;
-    video.muted = newMuted;
-    setMuted(newMuted);
+    if (muted) {
+      remote.unmute();
+    } else {
+      remote.mute();
+    }
   };
 
   const toggleFullscreen = () => {
@@ -105,10 +112,10 @@ export function VideoPlayer({ src, poster }: VideoPlayerProps) {
         toggleFullscreen();
         break;
       case 'ArrowLeft':
-        if (video) handleSeek(Math.max(0, video.currentTime - 10));
+        remote.seek(Math.max(0, currentTime - 10));
         break;
       case 'ArrowRight':
-        if (video) handleSeek(Math.min(duration, video.currentTime + 10));
+        remote.seek(Math.min(duration, currentTime + 10));
         break;
       case 'm':
         toggleMute();
@@ -116,83 +123,96 @@ export function VideoPlayer({ src, poster }: VideoPlayerProps) {
     }
   };
 
+  const VolumeIcon =
+    muted || localVolume === 0
+      ? SpeakerSlash
+      : localVolume < 0.5
+        ? SpeakerLow
+        : SpeakerHigh;
+
+  const bufferPercent = duration > 0 ? (buffered / duration) * 100 : 0;
+
   return (
-    <div
-      ref={containerRef}
-      onMouseMove={resetHideTimer}
-      onKeyDown={handleKeyDown}
-      tabIndex={0}
-      style={{
-        position: 'relative',
-        width: '100%',
-        aspectRatio: '16 / 9',
-        background: '#000',
-        borderRadius: 8,
-        overflow: 'hidden',
-        outline: 'none',
-      }}
-    >
-      <video
-        ref={videoRef}
-        src={src}
-        poster={poster}
-        onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleLoadedMetadata}
-        onEnded={() => setPlaying(false)}
+    <>
+      {/* Click-to-toggle overlay */}
+      <div
         onClick={togglePlay}
+        onMouseMove={resetHideTimer}
+        onKeyDown={handleKeyDown}
+        tabIndex={0}
         style={{
-          width: '100%',
-          height: '100%',
-          objectFit: 'contain',
+          position: 'absolute',
+          inset: 0,
+          zIndex: 1,
           cursor: 'pointer',
+          outline: 'none',
         }}
       />
 
       {/* Controls overlay */}
       <div
+        onMouseMove={resetHideTimer}
         style={{
           position: 'absolute',
           bottom: 0,
           left: 0,
           right: 0,
-          background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
+          zIndex: 2,
+          background: overlay.controlGradient,
           padding: '24px 12px 12px',
           opacity: showControls ? 1 : 0,
           transition: 'opacity 200ms ease',
           pointerEvents: showControls ? 'auto' : 'none',
         }}
       >
-        {/* Progress bar */}
-        <Slider
-          min={0}
-          max={duration || 1}
-          value={currentTime}
-          onChange={handleSeek}
-          tooltip={{ formatter: (v) => (v != null ? formatDuration(v) : '') }}
-          styles={{
-            track: { background: colors.accent },
-            handle: { borderColor: colors.accent },
-          }}
-          style={{ margin: '0 0 8px 0' }}
-        />
+        {/* Progress bar with buffer indicator */}
+        <div style={{ position: 'relative', margin: '0 0 8px 0' }}>
+          {/* Buffer bar (behind the slider) */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: 0,
+              height: 4,
+              width: `${bufferPercent}%`,
+              background: overlay.buffer,
+              borderRadius: 2,
+              transform: 'translateY(-50%)',
+              pointerEvents: 'none',
+              zIndex: 0,
+            }}
+          />
+          <Slider
+            min={0}
+            max={duration || 1}
+            value={currentTime}
+            onChange={handleSeek}
+            tooltip={{ formatter: (v) => (v != null ? formatDuration(v) : '') }}
+            styles={{
+              track: { background: cssVar.accent },
+              handle: { borderColor: cssVar.accent },
+            }}
+            style={{ margin: 0, position: 'relative', zIndex: 1 }}
+          />
+        </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {/* Play/Pause */}
           <button
             onClick={togglePlay}
             style={{
-              background: 'none',
+              background: 'transparent',
               border: 'none',
               cursor: 'pointer',
-              color: '#fff',
+              color: overlay.text,
               padding: 4,
             }}
           >
-            {playing ? <Pause size={22} weight="fill" /> : <Play size={22} weight="fill" />}
+            {paused ? <Play size={22} weight="fill" /> : <Pause size={22} weight="fill" />}
           </button>
 
           {/* Time */}
-          <span style={{ color: '#fff', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
+          <span style={{ color: overlay.text, fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
             {formatDuration(currentTime)} / {formatDuration(duration)}
           </span>
 
@@ -202,25 +222,25 @@ export function VideoPlayer({ src, poster }: VideoPlayerProps) {
           <button
             onClick={toggleMute}
             style={{
-              background: 'none',
+              background: 'transparent',
               border: 'none',
               cursor: 'pointer',
-              color: '#fff',
+              color: overlay.text,
               padding: 4,
             }}
           >
-            {muted ? <SpeakerSlash size={18} /> : <SpeakerHigh size={18} />}
+            <VolumeIcon size={18} />
           </button>
           <Slider
             min={0}
             max={1}
             step={0.05}
-            value={muted ? 0 : volume}
+            value={muted ? 0 : localVolume}
             onChange={handleVolume}
             style={{ width: 80 }}
             styles={{
-              track: { background: colors.accent },
-              handle: { borderColor: colors.accent },
+              track: { background: cssVar.accent },
+              handle: { borderColor: cssVar.accent },
             }}
           />
 
@@ -228,10 +248,10 @@ export function VideoPlayer({ src, poster }: VideoPlayerProps) {
           <button
             onClick={toggleFullscreen}
             style={{
-              background: 'none',
+              background: 'transparent',
               border: 'none',
               cursor: 'pointer',
-              color: '#fff',
+              color: overlay.text,
               padding: 4,
             }}
           >
@@ -239,6 +259,34 @@ export function VideoPlayer({ src, poster }: VideoPlayerProps) {
           </button>
         </div>
       </div>
+    </>
+  );
+}
+
+export function VideoPlayer({ src, poster }: VideoPlayerProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        position: 'relative',
+        width: '100%',
+        aspectRatio: '16 / 9',
+        background: overlay.bg,
+        borderRadius: 8,
+        overflow: 'hidden',
+      }}
+    >
+      <MediaPlayer
+        src={src}
+        poster={poster}
+        crossOrigin=""
+        style={{ width: '100%', height: '100%' }}
+      >
+        <MediaProvider style={{ width: '100%', height: '100%' }} />
+        <VideoPlayerControls containerRef={containerRef} />
+      </MediaPlayer>
     </div>
   );
 }

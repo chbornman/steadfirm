@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Typography } from 'antd';
 import { DropZone } from '@steadfirm/ui';
 import type { ClassifiedFile, UploadFileProgress } from '@steadfirm/ui';
@@ -6,11 +7,21 @@ import { classifyFile } from '@steadfirm/shared';
 import type { ServiceName } from '@steadfirm/shared';
 import { uploadFile } from '@/api/upload';
 
+/** Map service names to the query key prefixes used by each tab's queries. */
+const SERVICE_QUERY_KEYS: Record<ServiceName, string[][]> = {
+  photos: [['photos']],
+  media: [['media']],
+  documents: [['documents']],
+  audiobooks: [['audiobooks']],
+  files: [['files']],
+};
+
 type Step = 'select' | 'review' | 'upload';
 
 const MAX_CONCURRENT = 3;
 
 export function UploadPage() {
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<Step>('select');
   const [files, setFiles] = useState<ClassifiedFile[]>([]);
   const [uploadProgress, setUploadProgress] = useState<Map<string, UploadFileProgress>>(new Map());
@@ -90,7 +101,17 @@ export function UploadPage() {
     }
 
     await Promise.all(active);
-  }, [files]);
+
+    // Invalidate caches for all services that received uploads so the
+    // destination tabs show the new items without a manual page refresh.
+    const affectedServices = new Set(files.map((f) => f.service));
+    for (const service of affectedServices) {
+      const queryKey = SERVICE_QUERY_KEYS[service];
+      if (queryKey) {
+        void queryClient.invalidateQueries({ queryKey });
+      }
+    }
+  }, [files, queryClient]);
 
   const handleReset = useCallback(() => {
     setStep('select');

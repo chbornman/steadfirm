@@ -9,7 +9,7 @@ import { DEFAULT_PAGE_SIZE } from '@steadfirm/shared';
 import { api } from '@/api/client';
 import { useIntersection } from '@/hooks/useIntersection';
 import { useNavigate } from '@tanstack/react-router';
-import { MediaSubNav } from './MediaSubNav';
+
 
 export function MediaMusicPage() {
   const navigate = useNavigate();
@@ -49,16 +49,14 @@ export function MediaMusicPage() {
 
   const handleSelect = useCallback(
     (artist: Artist) => {
-      void navigate({ to: '/media/music/$artistId', params: { artistId: artist.id } });
+      void navigate({ to: '/music/$artistId', params: { artistId: artist.id } });
     },
     [navigate],
   );
 
   return (
     <>
-      <MediaSubNav />
-
-      <div style={{ padding: '12px 16px', minHeight: 'calc(100vh - 160px)' }}>
+      <div style={{ padding: '12px 16px', minHeight: 'calc(100vh - 120px)' }}>
         {isLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 64 }}>
             <Spin size="large" />

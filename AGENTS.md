@@ -82,6 +82,22 @@ cd infra && docker compose down
 - **Components**: Functional only. Use `'use client'` only when needed.
 - **Types**: Strict TypeScript. Use `type` keyword for type-only declarations. Import types with `import type`.
 
+## No Magic Numbers or Hardcoded Values
+
+**This is a high-priority rule.** Never introduce magic numbers, hardcoded strings, or inline configuration values.
+
+### Rust Backend
+
+- **Environment-sensitive values** (paths, timeouts, pool sizes, credentials, retry limits) go in `crates/backend/src/config.rs` as fields on `Config`, read from env vars with sensible defaults via `env_or()`.
+- **Tuning parameters** (page sizes, cache TTLs, image quality, password lengths) go in `crates/backend/src/constants.rs` as named `pub const` values with doc comments.
+- **Branding strings** ("Steadfirm", device IDs) are acceptable inline since they are the product name, but use `env!("CARGO_PKG_VERSION")` for version strings — never hardcode `"1.0.0"`.
+- When adding a new numeric literal, timeout, path, or limit — stop and ask: "Would this differ between deployments?" If yes → `config.rs`. If no but it's a tuning knob → `constants.rs`. If it's a protocol constant (HTTP status codes, JSON field names) → inline is fine.
+
+### TypeScript Frontend
+
+- **Theme values** (colors, shadows, spacing, gradients) go in `@steadfirm/theme` tokens — never as inline hex codes or magic pixel values. See `packages/theme/src/tokens.ts`.
+- **API configuration** (base URLs, retry limits, timeouts) go in the shared API client config, not scattered across components.
+
 ## Key Design Principles
 
 1. **Users never see infrastructure** — no Docker, no service names, no configuration

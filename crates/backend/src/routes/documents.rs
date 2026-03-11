@@ -41,7 +41,7 @@ pub struct TagInfo {
 static NAME_CACHE: std::sync::LazyLock<Arc<RwLock<HashMap<String, NameCache>>>> =
     std::sync::LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
 
-const CACHE_TTL_SECS: u64 = 300; // 5 minutes
+const CACHE_TTL_SECS: u64 = crate::constants::PAPERLESS_NAME_CACHE_TTL_SECS;
 
 pub fn router() -> Router<AppState> {
     Router::new()

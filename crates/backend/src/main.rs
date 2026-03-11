@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use axum::{routing::get, Json, Router};
+use axum::{extract::DefaultBodyLimit, middleware as axum_mw, routing::get, Json, Router};
 use serde_json::{json, Value};
 use sqlx::postgres::PgPoolOptions;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
@@ -8,12 +8,16 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 
 mod auth;
 mod config;
+pub mod constants;
 mod error;
+mod middleware;
 mod models;
 mod pagination;
+pub mod provisioning;
 mod proxy;
 mod routes;
 mod services;
+mod startup;
 
 /// Shared application state available to all route handlers.
 #[derive(Clone)]
@@ -35,11 +39,11 @@ async fn main() -> anyhow::Result<()> {
 
     dotenvy::dotenv().ok();
 
-    let config = config::Config::from_env()?;
+    let mut config = config::Config::from_env()?;
 
     // Connect to Postgres
     let pool = PgPoolOptions::new()
-        .max_connections(10)
+        .max_connections(config.db_max_connections)
         .connect(&config.database_url)
         .await?;
     tracing::info!("connected to database");
@@ -50,9 +54,21 @@ async fn main() -> anyhow::Result<()> {
 
     // Shared HTTP client for all service calls
     let http = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .connect_timeout(std::time::Duration::from_secs(5))
+        .timeout(std::time::Duration::from_secs(config.http_timeout_secs))
+        .connect_timeout(std::time::Duration::from_secs(
+            config.http_connect_timeout_secs,
+        ))
         .build()?;
+
+    // Load any existing admin credentials from DB
+    config = startup::load_admin_credentials(&pool, config).await?;
+
+    // Initialize services that haven't been set up yet
+    startup::initialize_services(&pool, &mut config, &http).await?;
+    tracing::info!("service initialization complete");
+
+    // Ensure files storage directory exists
+    std::fs::create_dir_all(&config.files_storage_path)?;
 
     let state = AppState {
         db: pool,
@@ -63,6 +79,8 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/health", get(health))
         .nest("/api/v1", routes::api_router())
+        .layer(DefaultBodyLimit::max(state.config.max_upload_bytes))
+        .layer(axum_mw::from_fn(middleware::request_id))
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
         .with_state(state);

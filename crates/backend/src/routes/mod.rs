@@ -7,6 +7,7 @@ mod audiobooks;
 mod documents;
 mod dropzone;
 mod files;
+mod hooks;
 mod media;
 mod photos;
 mod users;
@@ -15,6 +16,7 @@ pub fn api_router() -> Router<AppState> {
     Router::new()
         .nest("/users", users::router())
         .nest("/admin", admin::router())
+        .nest("/hooks", hooks::router())
         .nest("/upload", dropzone::router())
         .nest("/photos", photos::router())
         .nest("/media", media::router())

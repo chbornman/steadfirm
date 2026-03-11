@@ -4,7 +4,6 @@ import { useNavigate, useRouterState } from '@tanstack/react-router';
 const segments = [
   { label: 'Movies', value: '/media/movies' },
   { label: 'Shows', value: '/media/shows' },
-  { label: 'Music', value: '/media/music' },
 ];
 
 export function MediaSubNav() {
