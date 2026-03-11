@@ -113,3 +113,26 @@ The shared instance is architecturally fine — these services have low write vo
 4. Test restores regularly
 
 Priority: **Must be in place before accepting real user data.**
+
+---
+
+## Jellyfin Startup Wizard Automation
+
+**Problem:** Jellyfin requires completing a startup wizard (set server name, create admin user, finalize config) before any admin API calls work. Currently done manually via API calls during dev setup.
+
+**Solution:** Create an idempotent init script (`infra/scripts/init-jellyfin.sh` or similar) that:
+1. Polls `GET /System/Info/Public` until Jellyfin is healthy
+2. Checks `StartupWizardCompleted` — exits early if already done
+3. Sets server config via `POST /Startup/Configuration`
+4. Creates admin user via `POST /Startup/User` (credentials from env vars)
+5. Completes wizard via `POST /Startup/Complete`
+6. Authenticates as admin via `POST /Users/AuthenticateByName` to obtain the API token
+7. Writes `JELLYFIN_ADMIN_TOKEN` back to the environment (or prints it for manual `.env` update)
+
+Run as part of the deploy pipeline or as a Docker Compose `init` container. Must be idempotent — safe to run repeatedly.
+
+**Current dev credentials (stored in `.env`):**
+- Admin username: `admin`
+- Admin password: `zGDpLxYOdpR5nkIV1h3clGs8H6nMWUHR`
+- Admin token: `33d586b4c7834b4d87a7032e6b93f7ad`
+- Admin user ID: `bab8098494364f96a8d194ebe74ab085`

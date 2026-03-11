@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Config {
     pub port: u16,
     pub database_url: String,

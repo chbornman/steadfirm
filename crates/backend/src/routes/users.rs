@@ -1,7 +1,9 @@
 use axum::{Json, Router, routing::get};
 use serde_json::{Value, json};
 
-pub fn router() -> Router {
+use crate::AppState;
+
+pub fn router() -> Router<AppState> {
     Router::new()
         .route("/me", get(get_current_user))
 }

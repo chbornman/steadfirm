@@ -2,12 +2,20 @@ use std::net::SocketAddr;
 
 use axum::{Json, Router, routing::get};
 use serde_json::{Value, json};
+use sqlx::postgres::PgPoolOptions;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 mod config;
 mod error;
 mod routes;
+
+/// Shared application state available to all route handlers.
+#[derive(Clone)]
+pub struct AppState {
+    pub db: sqlx::PgPool,
+    pub config: config::Config,
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -20,11 +28,30 @@ async fn main() -> anyhow::Result<()> {
 
     let config = config::Config::from_env()?;
 
+    // Connect to Postgres
+    let pool = PgPoolOptions::new()
+        .max_connections(10)
+        .connect(&config.database_url)
+        .await?;
+    tracing::info!("connected to database");
+
+    // Run SQLx migrations
+    sqlx::migrate!()
+        .run(&pool)
+        .await?;
+    tracing::info!("database migrations applied");
+
+    let state = AppState {
+        db: pool,
+        config: config.clone(),
+    };
+
     let app = Router::new()
         .route("/health", get(health))
         .nest("/api/v1", routes::api_router())
         .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::permissive());
+        .layer(CorsLayer::permissive())
+        .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
     tracing::info!("Steadfirm backend listening on {addr}");

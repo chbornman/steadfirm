@@ -1,32 +1,34 @@
 use axum::{Json, Router, routing::get};
 use serde_json::{Value, json};
 
+use crate::AppState;
+
 /// Immich proxy — photos and home videos
-pub fn photos_router() -> Router {
+pub fn photos_router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_photos))
 }
 
 /// Jellyfin proxy — movies, TV, music
-pub fn media_router() -> Router {
+pub fn media_router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_media))
 }
 
 /// Paperless-ngx proxy — documents
-pub fn documents_router() -> Router {
+pub fn documents_router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_documents))
 }
 
 /// Audiobookshelf proxy — audiobooks
-pub fn audiobooks_router() -> Router {
+pub fn audiobooks_router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_audiobooks))
 }
 
 /// Steadfirm files — unclassified uploads
-pub fn files_router() -> Router {
+pub fn files_router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_files))
 }

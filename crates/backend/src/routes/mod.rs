@@ -1,10 +1,12 @@
 use axum::Router;
 
+use crate::AppState;
+
 mod dropzone;
 mod proxy;
 mod users;
 
-pub fn api_router() -> Router {
+pub fn api_router() -> Router<AppState> {
     Router::new()
         .nest("/users", users::router())
         .nest("/upload", dropzone::router())
