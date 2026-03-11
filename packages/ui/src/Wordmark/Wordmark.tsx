@@ -6,15 +6,15 @@ export interface WordmarkProps {
   size?: number;
   /** Text color — defaults to currentColor (inherits from parent) */
   color?: string;
-  /** Accent color for the underline swoosh — defaults to the theme accent var */
+  /** Accent color for the swoosh — defaults to the theme accent var */
   accentColor?: string;
   /** Additional inline styles */
   style?: CSSProperties;
   onClick?: () => void;
 }
 
-/** Duration of the hover tilt animation in ms */
-const HOVER_DURATION_MS = 300;
+/** Duration of the hover animation in ms */
+const HOVER_DURATION_MS = 350;
 /** Slight forward lean on hover (degrees) */
 const HOVER_ROTATE_DEG = -2;
 /** Scale bump on hover */
@@ -22,8 +22,8 @@ const HOVER_SCALE = 1.04;
 
 /**
  * Steadfirm script wordmark — bold cursive logo inspired by the Virgin brand.
- * Renders the brand name in Kaushan Script with a decorative accent swoosh
- * and a playful hover tilt animation.
+ * Renders the brand name in Kaushan Script with an organic filled swoosh
+ * underneath that slides in on hover.
  */
 export function Wordmark({
   size = 22,
@@ -33,10 +33,6 @@ export function Wordmark({
   onClick,
 }: WordmarkProps) {
   const [hovered, setHovered] = useState(false);
-
-  /** Swoosh sits just below the text baseline */
-  const swooshHeight = Math.max(size * 0.12, 2);
-  const swooshOffset = size * 0.08;
 
   return (
     <span
@@ -53,7 +49,7 @@ export function Wordmark({
         cursor: onClick ? 'pointer' : 'default',
         fontFamily: typography.fontFamilyScript,
         fontSize: size,
-        fontWeight: 400, // Kaushan Script only has 400 but looks bold naturally
+        fontWeight: 400,
         lineHeight: 1.1,
         letterSpacing: '-0.02em',
         color: color ?? 'currentColor',
@@ -69,33 +65,50 @@ export function Wordmark({
     >
       Steadfirm
 
-      {/* Decorative accent swoosh underline */}
+      {/*
+        Organic filled swoosh — varies in thickness like a brush stroke.
+        Starts thin on the left, swells through the middle, tapers off right.
+        On hover it slides in from the left and settles under the text.
+      */}
       <svg
-        viewBox="0 0 120 12"
+        viewBox="0 0 140 14"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
         style={{
           position: 'absolute',
-          bottom: -swooshOffset,
+          bottom: size * -0.06,
           left: '5%',
-          width: '95%',
-          height: swooshHeight + 4,
+          width: '90%',
+          height: size * 0.35,
           overflow: 'visible',
-          opacity: hovered ? 1 : 0.7,
-          transition: `opacity ${HOVER_DURATION_MS}ms ease`,
+          pointerEvents: 'none',
+          transform: hovered ? 'translateX(8px)' : 'translateX(-20px)',
+          opacity: hovered ? 0.85 : 0.55,
+          transition: [
+            `transform ${HOVER_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+            `opacity ${HOVER_DURATION_MS}ms ease`,
+          ].join(', '),
         }}
       >
+        {/* Filled brush-stroke shape: thin entry → fat belly → thin taper */}
         <path
-          d="M2 8 C20 2, 40 2, 60 6 S100 10, 118 4"
-          stroke={accentColor}
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          fill="none"
-          style={{
-            strokeDasharray: 140,
-            strokeDashoffset: hovered ? 0 : 140,
-            transition: `stroke-dash-offset ${HOVER_DURATION_MS + 200}ms cubic-bezier(0.65, 0, 0.35, 1)`,
-          }}
+          d={[
+            'M2 9',
+            'C6 9, 10 8.5, 18 7',        // thin entry
+            'C28 5, 36 3.5, 52 3',         // rises and starts to swell
+            'C64 2.5, 76 2, 88 3',         // thick middle belly (top edge)
+            'C100 4, 112 5, 124 5.5',      // carrying through
+            'L132 6',                       // tip approach
+            'Q136 6.2, 138 6.5',           // very thin taper end
+            'Q136 7, 132 7.5',             // curves back (bottom edge)
+            'C120 8.5, 108 9, 96 9.5',     // bottom of the swell
+            'C80 10, 66 10.5, 52 10',       // fattest part underside
+            'C38 9.5, 26 9, 16 9.5',       // narrows back
+            'C10 10, 6 10, 2 9',           // thin exit back to start
+            'Z',
+          ].join(' ')}
+          fill={accentColor}
         />
       </svg>
     </span>
