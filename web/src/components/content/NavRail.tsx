@@ -1,14 +1,14 @@
 import type { ReactNode } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { cssVar } from '@steadfirm/theme';
-import { RAIL_COLLAPSED_WIDTH, RAIL_TOP, RAIL_SPRING } from './constants';
+import { RAIL_TOP, RAIL_SPRING } from './constants';
 
 /**
  * Floating left-side sub-navigation rail.
  *
- * Renders a vertical strip of icon buttons. The active item expands to show
- * its label; inactive items show only their icon. Visually mirrors the
- * FilterRail on the right side.
+ * Renders a vertical strip of icon + label buttons. The active item is
+ * highlighted with a pill background; all items always show their label.
+ * Visually mirrors the FilterRail on the right side.
  *
  * Only rendered on pages with sub-navigation (Media: Movies/Shows, Reading:
  * library tabs). Pages without sub-nav simply omit this component.
@@ -44,80 +44,56 @@ export function NavRail({ items, activeKey, onChange }: NavRailProps) {
         gap: 4,
         padding: 4,
         borderRadius: 12,
-        background: 'var(--ant-color-bg-container)',
-        border: '1px solid var(--ant-color-border)',
+        background: cssVar.accent,
+        border: 'none',
         boxShadow: 'var(--sf-shadow-card)',
       }}
     >
       {items.map((item) => {
         const isActive = item.key === activeKey;
         return (
-          <motion.button
+          <button
             key={item.key}
-            layout
             onClick={() => onChange(item.key)}
-            transition={RAIL_SPRING}
             style={{
               position: 'relative',
               display: 'flex',
               alignItems: 'center',
-              gap: isActive ? 8 : 0,
-              padding: isActive ? '8px 14px 8px 10px' : '8px',
-              width: isActive ? 'auto' : RAIL_COLLAPSED_WIDTH,
-              minWidth: RAIL_COLLAPSED_WIDTH,
+              gap: 8,
+              padding: '8px 14px 8px 10px',
               border: 'none',
               background: 'transparent',
               cursor: 'pointer',
-              color: isActive ? '#fff' : 'var(--ant-color-text-secondary)',
+              color: isActive ? '#fff' : 'rgba(255, 255, 255, 0.7)',
               fontSize: 12,
               fontWeight: isActive ? 600 : 400,
               fontFamily: 'inherit',
               borderRadius: 8,
               whiteSpace: 'nowrap',
-              overflow: 'hidden',
+              transition: 'color 0.15s ease',
             }}
           >
-            {/* Active pill background */}
-            <AnimatePresence>
-              {isActive && (
-                <motion.span
-                  layoutId="nav-rail-pill"
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={RAIL_SPRING}
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    borderRadius: 8,
-                    background: cssVar.accent,
-                    zIndex: -1,
-                  }}
-                />
-              )}
-            </AnimatePresence>
+            {/* Sliding pill background */}
+            {isActive && (
+              <motion.span
+                layoutId="nav-rail-pill"
+                transition={RAIL_SPRING}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  borderRadius: 8,
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  zIndex: -1,
+                }}
+              />
+            )}
 
-            <motion.span
-              layout="position"
-              style={{ display: 'flex', flexShrink: 0, lineHeight: 0 }}
-            >
+            <span style={{ display: 'flex', flexShrink: 0, lineHeight: 0 }}>
               {item.icon}
-            </motion.span>
+            </span>
 
-            <AnimatePresence initial={false}>
-              {isActive && (
-                <motion.span
-                  initial={{ width: 0, opacity: 0 }}
-                  animate={{ width: 'auto', opacity: 1 }}
-                  exit={{ width: 0, opacity: 0 }}
-                  transition={{ ...RAIL_SPRING, opacity: { duration: 0.12 } }}
-                  style={{ overflow: 'hidden', display: 'inline-block' }}
-                >
-                  {item.label}
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </motion.button>
+            <span>{item.label}</span>
+          </button>
         );
       })}
     </motion.div>

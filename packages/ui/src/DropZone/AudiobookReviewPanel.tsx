@@ -227,11 +227,10 @@ function AudiobookGroupCard({
       <AnimatePresence initial={false}>
         {expanded && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            style={{ overflow: 'hidden' }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
           >
             <div style={{ padding: '8px 14px 14px', borderTop: '1px solid var(--ant-color-border)' }}>
               {/* Essential fields (always visible) */}
@@ -291,11 +290,10 @@ function AudiobookGroupCard({
               <AnimatePresence>
                 {showAdvanced && (
                   <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                    style={{ overflow: 'hidden' }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15, ease: 'easeOut' }}
                   >
                     <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
                       <div style={{ flex: 1 }}>

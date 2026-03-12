@@ -16,6 +16,7 @@ import {
   Tag,
   MagnifyingGlass,
 } from '@phosphor-icons/react';
+import { cssVar } from '@steadfirm/theme';
 import { RAIL_ICON_SIZE, RAIL_COLLAPSED_WIDTH, RAIL_TOP, RAIL_SPRING } from './constants';
 
 /**
@@ -94,8 +95,8 @@ export function FilterRail({ children }: FilterRailProps) {
           gap: 4,
           padding: 4,
           borderRadius: 12,
-          background: 'var(--ant-color-bg-container)',
-          border: '1px solid var(--ant-color-border)',
+          background: cssVar.accent,
+          border: 'none',
           boxShadow: 'var(--sf-shadow-card)',
         }}
       >
@@ -126,11 +127,9 @@ function FilterItem({ filterKey, icon, label, children, active }: FilterItemProp
 
   return (
     <div style={{ position: 'relative' }}>
-      <motion.button
-        layout
+      <button
         onClick={() => toggle(filterKey)}
         title={label}
-        transition={RAIL_SPRING}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -139,16 +138,16 @@ function FilterItem({ filterKey, icon, label, children, active }: FilterItemProp
           height: RAIL_COLLAPSED_WIDTH,
           border: 'none',
           background: isOpen
-            ? 'var(--ant-color-fill-secondary)'
+            ? 'rgba(255, 255, 255, 0.2)'
             : active
-              ? 'var(--ant-color-fill-quaternary)'
+              ? 'rgba(255, 255, 255, 0.1)'
               : 'transparent',
           cursor: 'pointer',
           color: active
-            ? 'var(--sf-accent)'
+            ? '#fff'
             : isOpen
-              ? 'var(--ant-color-text)'
-              : 'var(--ant-color-text-secondary)',
+              ? '#fff'
+              : 'rgba(255, 255, 255, 0.7)',
           borderRadius: 8,
           padding: 0,
           transition: 'background 150ms ease, color 150ms ease',
@@ -165,35 +164,34 @@ function FilterItem({ filterKey, icon, label, children, active }: FilterItemProp
               width: 5,
               height: 5,
               borderRadius: '50%',
-              background: 'var(--sf-accent)',
+              background: '#fff',
             }}
           />
         )}
-      </motion.button>
+      </button>
 
       {/* Expanded panel — slides out to the left */}
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, width: 0, x: 8 }}
-            animate={{ opacity: 1, width: 'auto', x: 0 }}
-            exit={{ opacity: 0, width: 0, x: 8 }}
-            transition={RAIL_SPRING}
+            initial={{ opacity: 0, x: 8 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 8 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
             style={{
               position: 'absolute',
               right: RAIL_COLLAPSED_WIDTH + 8,
               top: 0,
-              overflow: 'hidden',
               whiteSpace: 'nowrap',
               borderRadius: 10,
-              background: 'var(--ant-color-bg-container)',
-              border: '1px solid var(--ant-color-border)',
+              background: cssVar.accent,
+              border: 'none',
               boxShadow: 'var(--sf-shadow-card)',
               padding: '8px 12px',
               minWidth: 160,
             }}
           >
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ant-color-text-secondary)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255, 255, 255, 0.7)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               {label}
             </div>
             {children}
