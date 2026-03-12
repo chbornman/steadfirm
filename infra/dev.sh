@@ -65,7 +65,39 @@ else
     docker compose -f "$SCRIPT_DIR/docker-compose.yml" -f "$SCRIPT_DIR/docker-compose.dev.yml" up -d
 fi
 
-# ── Step 2: Start local services ──────────────────────────────────────
+# ── Step 2: Wait for Docker services ──────────────────────────────────
+
+header "Waiting for Docker services"
+
+DC="docker compose -f $SCRIPT_DIR/docker-compose.yml -f $SCRIPT_DIR/docker-compose.dev.yml"
+
+wait_for_container() {
+    local name="$1" timeout="${2:-120}" elapsed=0
+    while [ $elapsed -lt $timeout ]; do
+        local health
+        health=$($DC ps --format "{{.Health}}" "$name" 2>/dev/null | head -1)
+        # Containers without healthchecks report empty — treat as ready
+        if [ -z "$health" ] || [ "$health" = "healthy" ]; then
+            ok "$name is ready"
+            return 0
+        fi
+        sleep 2
+        elapsed=$((elapsed + 2))
+    done
+    warn "$name did not become healthy within ${timeout}s"
+    return 1
+}
+
+# Postgres and Valkey first (other services depend on them)
+wait_for_container postgres 30
+wait_for_container valkey 30
+
+# Then the application services (can take longer, especially Immich ML)
+for svc in immich-server jellyfin paperless audiobookshelf kavita; do
+    wait_for_container "$svc" 120
+done
+
+# ── Step 3: Start local services ──────────────────────────────────────
 
 header "Starting BetterAuth"
 (cd "$REPO_ROOT/services/betterauth" && bun run dev) 2>&1 | sed 's/^/  [betterauth] /' &
@@ -79,7 +111,7 @@ header "Starting Web frontend"
 (cd "$REPO_ROOT/web" && bun run dev) 2>&1 | sed 's/^/  [web]        /' &
 PIDS+=($!)
 
-# ── Step 3: Wait for services to be ready ─────────────────────────────
+# ── Step 4: Wait for services to be ready ─────────────────────────────
 
 header "Waiting for services"
 
@@ -100,7 +132,7 @@ wait_for() {
 wait_for "BetterAuth" "http://localhost:3002/health" 30
 wait_for "Backend"    "http://localhost:3001/health"  120
 
-# ── Step 4: Seed ──────────────────────────────────────────────────────
+# ── Step 5: Seed ──────────────────────────────────────────────────────
 
 if [ "$SKIP_SEED" -eq 0 ]; then
     header "Seeding demo content"

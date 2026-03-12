@@ -51,5 +51,17 @@ export type {
 export { AudiobookReviewPanel } from './DropZone';
 export type { AudiobookReviewPanelProps, AudiobookGroupEditable } from './DropZone';
 
+export { TvShowReviewPanel } from './DropZone';
+export type { TvShowReviewPanelProps, TvShowGroupEditable } from './DropZone';
+
+export { MovieReviewPanel } from './DropZone';
+export type { MovieReviewPanelProps, MovieGroupEditable } from './DropZone';
+
+export { MusicReviewPanel } from './DropZone';
+export type { MusicReviewPanelProps, MusicAlbumGroupEditable } from './DropZone';
+
+export { ReadingReviewPanel } from './DropZone';
+export type { ReadingReviewPanelProps, ReadingGroupEditable } from './DropZone';
+
 export { Wordmark } from './Wordmark';
 export type { WordmarkProps } from './Wordmark';

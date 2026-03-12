@@ -122,7 +122,7 @@ PROVISION_ELAPSED=0
 
 while [ $PROVISION_ELAPSED -lt $PROVISION_TIMEOUT ]; do
     # Hit an authenticated endpoint — if provisioning is done, we get credentials
-    STATUS=$(curl -sf "${BACKEND_URL}/api/v1/me" \
+    STATUS=$(curl -sf "${BACKEND_URL}/api/v1/users/me" \
         -H "Cookie: ${SESSION_COOKIE}" 2>/dev/null || echo "{}")
 
     # Check if all services are provisioned

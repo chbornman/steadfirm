@@ -207,3 +207,63 @@ Run as part of the deploy pipeline or as a Docker Compose `init` container. Must
 - **Both** for critical failures
 
 **Priority:** High — silent failures waste debugging time and erode trust in the system.
+
+---
+
+## Background Tasks Audit
+
+**Problem:** Everything in the backend currently runs request-scoped — work starts when a request arrives and ends when the response completes. This is correct for most flows, but several current and planned features may benefit from durable background processing (tasks that survive request cancellation, run on a schedule, or need retries).
+
+**Candidates to evaluate:**
+
+1. **Bulk upload + classification** — User drops 500 files. Currently the SSE stream must stay open for the entire classification + upload pipeline. If the browser tab closes, the work is lost. A background job queue would let the backend accept the batch, return immediately, and process uploads asynchronously with progress queryable via polling or SSE reconnect.
+2. **Service provisioning** — Creating a user currently provisions across 5 services synchronously in the signup flow. If Kavita is slow or temporarily down, signup fails entirely. Background provisioning with retries would be more resilient.
+3. **Periodic metadata sync** — If global search is built as a federation layer (fan out to 5 services per query), it's fast but adds load. An alternative is periodic background sync that pulls metadata from each service into a local search index (Postgres full-text or Meilisearch). This moves latency from query-time to sync-time.
+4. **Thumbnail/preview caching** — Pre-generating and caching thumbnails server-side rather than proxying on every request. Low priority given the signed URL plan above.
+5. **Stale session cleanup** — Periodic cleanup of expired BetterAuth sessions, orphaned files in the drop zone staging area, etc.
+6. **Re-classification** — User requests re-classification of files already stored. Potentially long-running if it involves moving files between services.
+
+**Rust options:**
+
+- `tokio::spawn` — Already used. Fine for fire-and-forget work within a request lifecycle. Not durable (lost on restart, no retries).
+- `tokio-cron-scheduler` — Lightweight cron-like scheduling within the Axum process. Good for periodic sync/cleanup.
+- `apalis` — Rust job queue library with Postgres or Redis backend. Typed jobs, retries, persistence, dead-letter queue. Closest equivalent to Python's Celery or Ruby's Sidekiq. Uses the existing Postgres instance.
+- Redis streams + custom worker — DIY approach using the existing Redis. More control, more code.
+
+**Recommendation:** No action needed for POC. Revisit when implementing global search (metadata sync) or when bulk uploads become a real workflow. `apalis` with Postgres is the natural first choice given the existing stack.
+
+---
+
+## Smart Upload Enhancements
+
+The core smart upload pipelines (Audiobookshelf, Jellyfin TV/Movies/Music, Kavita Reading) are complete. These enhancements would improve accuracy and user experience.
+
+### TMDb / TVDB Lookup for Movies & TV Shows
+
+**Problem:** Movie and TV show naming relies entirely on filename parsing. Misspelled titles, missing years, or non-standard naming produce incorrect folder structures that Jellyfin can't match.
+
+**Solution:** After heuristic detection, query TMDb (movies) or TVDB (TV shows) to validate and enrich metadata — correct title spelling, fill in missing years, fetch episode titles, and confirm season/episode numbering. Show matched results in the review panel so users can confirm or pick an alternative match.
+
+### Music Probing via ffprobe
+
+**Problem:** Music track metadata (artist, album, track number, year) is inferred from folder structure and filenames. Files with proper ID3/Vorbis tags have richer metadata that goes unused.
+
+**Solution:** Reuse the existing ffprobe service (already used for audiobook ID3 extraction) to probe music files. Extract artist, album, track number, title, year, and genre from tags. Prefer tag metadata over filename-inferred metadata in the review panel, with fallback to folder heuristics when tags are missing.
+
+### Immich Photo Enhancements (EXIF & Albums)
+
+**Problem:** Photos uploaded via the drop zone are sent to Immich as-is. No EXIF date extraction for organizing by date, no album creation from folder structure, and no deduplication check.
+
+**Solution:**
+1. Extract EXIF date-taken from images to display in the review panel and potentially group by date
+2. Infer album names from folder structure (e.g. `Vacation 2024/` → create Immich album)
+3. Check for duplicate photos before uploading (perceptual hash or EXIF fingerprint)
+
+### Paperless-ngx Enhancements (Tags & Correspondents)
+
+**Problem:** Documents uploaded to Paperless are sent without any pre-filled metadata. Users must manually tag and assign correspondents after upload.
+
+**Solution:**
+1. Suggest tags based on filename keywords, folder names, or document content (if OCR is available client-side)
+2. Infer correspondent from filename patterns (e.g. `Invoice - Acme Corp.pdf` → correspondent "Acme Corp")
+3. Show suggested tags and correspondent in the review panel for user confirmation before upload
