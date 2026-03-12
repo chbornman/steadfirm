@@ -20,6 +20,7 @@ pub struct ServiceCredentials {
     pub jellyfin: Option<ServiceCred>,
     pub paperless: Option<ServiceCred>,
     pub audiobookshelf: Option<ServiceCred>,
+    pub kavita: Option<ServiceCred>,
 }
 
 /// Authenticated user extracted from the session token.
@@ -64,6 +65,7 @@ impl FromRequestParts<AppState> for AuthUser {
                 "jellyfin" => credentials.jellyfin = Some(cred),
                 "paperless" => credentials.paperless = Some(cred),
                 "audiobookshelf" => credentials.audiobookshelf = Some(cred),
+                "kavita" => credentials.kavita = Some(cred),
                 _ => {
                     tracing::warn!(service = %row.service, "unknown service in credentials");
                 }

@@ -1,2 +1,9 @@
 export { DropZone } from './DropZone';
-export type { DropZoneProps, ClassifiedFile, UploadFileProgress, DroppedFile } from './DropZone';
+export type {
+  DropZoneProps,
+  ClassifiedFile,
+  UploadFileProgress,
+  DroppedFile,
+  StreamedClassification,
+  StreamingPhase,
+} from './DropZone';

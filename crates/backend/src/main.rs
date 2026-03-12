@@ -26,7 +26,7 @@ pub struct AppState {
     pub db: sqlx::PgPool,
     pub config: config::Config,
     pub http: reqwest::Client,
-    pub ai: Arc<services::AiClassifier>,
+    pub ai: Arc<tokio::sync::RwLock<services::AiClassifier>>,
 }
 
 #[tokio::main]
@@ -84,7 +84,7 @@ async fn main() -> anyhow::Result<()> {
         db: pool,
         config: config.clone(),
         http,
-        ai: Arc::new(ai),
+        ai: Arc::new(tokio::sync::RwLock::new(ai)),
     };
 
     let app = Router::new()

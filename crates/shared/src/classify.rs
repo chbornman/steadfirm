@@ -36,6 +36,8 @@ pub struct FileEntry {
     /// Relative path within a dropped folder (e.g.
     /// `Brandon Sanderson/Mistborn/chapter01.mp3`).
     /// `None` for files dropped individually (not from a folder).
+    /// Uses `default` so missing keys in JSON (JS `undefined`) deserialize as `None`.
+    #[serde(default)]
     pub relative_path: Option<String>,
 }
 
@@ -129,19 +131,18 @@ pub struct AudiobookGroup {
 }
 
 // ─── LLM extraction target ──────────────────────────────────────────
-// These types are what the Rig extractor deserializes the LLM response
-// into. They use `schemars::JsonSchema` so Rig can auto-generate the
-// schema for the LLM.
+// These types define the JSON structure the LLM returns. Deserialized
+// from the raw response text after JSON fence stripping.
 
 /// The structured response the LLM returns for a classification batch.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmClassifyResult {
     /// One entry per file that was sent to the LLM.
     pub files: Vec<LlmFileClassification>,
 }
 
 /// LLM classification for a single file.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmFileClassification {
     /// Index of the file in the batch sent to the LLM.
     pub index: usize,
@@ -162,7 +163,7 @@ pub struct LlmFileClassification {
 
 /// Audiobook metadata inferred by the LLM from filenames and folder
 /// structure.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmAudiobookMetadata {
     /// Inferred book title.
     pub title: String,

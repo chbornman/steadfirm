@@ -36,8 +36,23 @@ export function classifyFile(
   }
 
   // ── Documents: office/text formats are unambiguous ──
-  if (['pdf', 'docx', 'doc', 'xlsx', 'xls', 'odt', 'ods', 'pptx', 'ppt', 'txt', 'rtf', 'csv', 'epub'].includes(ext)) {
+  if (['docx', 'doc', 'xlsx', 'xls', 'odt', 'ods', 'pptx', 'ppt', 'txt', 'rtf', 'csv'].includes(ext)) {
     return { service: 'documents', confidence: 0.92 };
+  }
+
+  // ── Reading: ebooks are always for reading ──
+  if (['epub', 'mobi', 'azw', 'azw3', 'fb2'].includes(ext)) {
+    return { service: 'reading', confidence: 0.95 };
+  }
+
+  // ── Reading: comics/manga are always for reading ──
+  if (['cbz', 'cbr', 'cb7', 'cbt', 'cba'].includes(ext)) {
+    return { service: 'reading', confidence: 0.95 };
+  }
+
+  // ── PDF: could be a document to archive or a book to read — let LLM decide ──
+  if (ext === 'pdf') {
+    return { service: 'documents', confidence: 0.5 };
   }
 
   // ── M4B is always an audiobook ──

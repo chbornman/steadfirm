@@ -4,6 +4,7 @@ import { darkTheme, lightTheme } from '@steadfirm/theme';
 import { useThemeStore } from '@/stores/theme';
 import { router } from '@/router';
 import { DebugPanel } from '@/components/DebugPanel';
+import { DevLlmToggle } from '@/components/DevLlmToggle';
 
 export function ThemedApp() {
   const resolved = useThemeStore((s) => s.resolved);
@@ -14,6 +15,7 @@ export function ThemedApp() {
       <AntApp>
         <RouterProvider router={router} />
         <DebugPanel />
+        <DevLlmToggle />
       </AntApp>
     </ConfigProvider>
   );

@@ -154,6 +154,37 @@ pub async fn provision_all(
         }
     }
 
+    // --- Kavita ---
+    match provision_kavita(state, name).await {
+        Ok((service_user_id, api_key)) => {
+            let stored =
+                store_credential(&state.db, user_id, "kavita", &service_user_id, &api_key).await;
+            match stored {
+                Ok(()) => results.push(ServiceProvisionResult {
+                    service: "kavita".into(),
+                    status: "provisioned".into(),
+                    user_id: Some(service_user_id),
+                    error: None,
+                }),
+                Err(e) => results.push(ServiceProvisionResult {
+                    service: "kavita".into(),
+                    status: "failed".into(),
+                    user_id: None,
+                    error: Some(e.to_string()),
+                }),
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "failed to provision kavita");
+            results.push(ServiceProvisionResult {
+                service: "kavita".into(),
+                status: "failed".into(),
+                user_id: None,
+                error: Some(e.to_string()),
+            });
+        }
+    }
+
     results
 }
 
@@ -218,7 +249,13 @@ async fn find_missing_services(db: &sqlx::PgPool, user_id: &str) -> Vec<String> 
             .unwrap_or_default();
 
     let provisioned: Vec<&str> = rows.iter().map(|r| r.0.as_str()).collect();
-    let all_services = ["immich", "jellyfin", "paperless", "audiobookshelf"];
+    let all_services = [
+        "immich",
+        "jellyfin",
+        "paperless",
+        "audiobookshelf",
+        "kavita",
+    ];
     all_services
         .iter()
         .filter(|s| !provisioned.contains(s))
@@ -286,6 +323,20 @@ async fn provision_missing(
                     tracing::error!(error = %e, "retry: failed to provision audiobookshelf");
                     ServiceProvisionResult {
                         service: "audiobookshelf".into(),
+                        status: "failed".into(),
+                        user_id: None,
+                        error: Some(e.to_string()),
+                    }
+                }
+            },
+            "kavita" => match provision_kavita(state, name).await {
+                Ok((sid, api_key)) => {
+                    store_and_result(&state.db, user_id, "kavita", &sid, &api_key).await
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "retry: failed to provision kavita");
+                    ServiceProvisionResult {
+                        service: "kavita".into(),
                         status: "failed".into(),
                         user_id: None,
                         error: Some(e.to_string()),
@@ -514,6 +565,55 @@ async fn provision_audiobookshelf(
 
     tracing::info!(user_id = %user_id, "provisioned audiobookshelf user");
     Ok((user_id, token))
+}
+
+async fn provision_kavita(state: &AppState, name: &str) -> Result<(String, String), AppError> {
+    let client = KavitaClient::new(&state.config.kavita_url, state.http.clone());
+    let password = generate_password();
+
+    // Login as admin to get a JWT
+    let admin_login = client
+        .login(
+            &state.config.kavita_admin_username,
+            &state.config.admin_password,
+        )
+        .await?;
+    let admin_token = admin_login["token"]
+        .as_str()
+        .ok_or(AppError::Internal(anyhow::anyhow!(
+            "kavita: no token in admin login response"
+        )))?;
+
+    // Invite the new user
+    let invite_resp = client
+        .admin_create_user(admin_token, name, &password)
+        .await?;
+
+    // The invite endpoint may return a confirmation link/token.
+    // Extract the email link token if present, then confirm.
+    let invite_link = invite_resp.as_str().unwrap_or_default().to_string();
+
+    // Confirm the invitation to set the user's password
+    if !invite_link.is_empty() {
+        client.confirm_invite(&invite_link, name, &password).await?;
+    }
+
+    // Login as the new user to get their JWT
+    let user_login = client.login(name, &password).await?;
+    let user_token = user_login["token"]
+        .as_str()
+        .ok_or(AppError::Internal(anyhow::anyhow!(
+            "kavita: no token in user login response"
+        )))?;
+
+    // Create a persistent API key for the user
+    let api_key = client.create_api_key(user_token).await?;
+
+    // Use the email as the user ID (Kavita doesn't always expose numeric IDs easily)
+    let user_id = format!("{name}@steadfirm.local");
+
+    tracing::info!(user_id = %user_id, "provisioned kavita user");
+    Ok((user_id, api_key))
 }
 
 async fn store_credential(

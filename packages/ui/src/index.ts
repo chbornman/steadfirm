@@ -39,7 +39,14 @@ export { MediaViewer } from './MediaViewer';
 export type { MediaViewerProps } from './MediaViewer';
 
 export { DropZone } from './DropZone';
-export type { DropZoneProps, ClassifiedFile, UploadFileProgress, DroppedFile } from './DropZone';
+export type {
+  DropZoneProps,
+  ClassifiedFile,
+  UploadFileProgress,
+  DroppedFile,
+  StreamedClassification,
+  StreamingPhase,
+} from './DropZone';
 
 export { Wordmark } from './Wordmark';
 export type { WordmarkProps } from './Wordmark';

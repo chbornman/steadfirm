@@ -207,6 +207,43 @@ async fn upload_file(
 
             // TODO: Trigger ABS library scan.
         }
+        "reading" => {
+            let cred = user.credentials.kavita.ok_or(AppError::ServiceUnavailable(
+                "reading not provisioned".into(),
+            ))?;
+
+            // Save to Kavita library folder, preserving folder structure.
+            let abs_dir = if let Some(ref rel) = relative_path {
+                let folder = std::path::Path::new(rel)
+                    .parent()
+                    .and_then(|p| p.to_str())
+                    .unwrap_or("");
+                if folder.is_empty() {
+                    format!("{}/{}", state.config.reading_storage_path, user.id)
+                } else {
+                    format!(
+                        "{}/{}/{}",
+                        state.config.reading_storage_path, user.id, folder
+                    )
+                }
+            } else {
+                format!("{}/{}", state.config.reading_storage_path, user.id)
+            };
+
+            tokio::fs::create_dir_all(&abs_dir)
+                .await
+                .map_err(|e| AppError::Internal(anyhow::anyhow!("mkdir error: {e}")))?;
+
+            let file_path = format!("{}/{}", abs_dir, filename);
+            tokio::fs::write(&file_path, &file_data)
+                .await
+                .map_err(|e| AppError::Internal(anyhow::anyhow!("write error: {e}")))?;
+
+            // Trigger Kavita library scan so it picks up the new file.
+            let kavita_client =
+                crate::services::KavitaClient::new(&state.config.kavita_url, state.http.clone());
+            let _ = kavita_client.scan_all_libraries(&cred.api_key).await;
+        }
         "files" => {
             // Save to local Steadfirm storage.
             let user_dir = format!("{}/{}", state.config.files_storage_path, user.id);

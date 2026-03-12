@@ -23,23 +23,27 @@ pub struct Config {
     pub jellyfin_url: String,
     pub paperless_url: String,
     pub audiobookshelf_url: String,
+    pub kavita_url: String,
 
     // Admin tokens — populated from DB on startup (or env override)
     pub immich_admin_api_key: String,
     pub jellyfin_admin_token: String,
     pub paperless_admin_token: String,
     pub audiobookshelf_admin_token: String,
+    pub kavita_admin_api_key: String,
 
     // Admin identities — used during service initialization
     pub immich_admin_email: String,
     pub jellyfin_admin_username: String,
     pub paperless_admin_username: String,
     pub audiobookshelf_admin_username: String,
+    pub kavita_admin_username: String,
 
     // Storage paths
     pub files_storage_path: String,
     pub media_storage_path: String,
     pub audiobooks_storage_path: String,
+    pub reading_storage_path: String,
 
     // Jellyfin-specific (static per backend instance)
     pub jellyfin_device_id: String,
@@ -86,17 +90,20 @@ impl Config {
             jellyfin_url: env_or("JELLYFIN_URL", "http://jellyfin:8096"),
             paperless_url: env_or("PAPERLESS_URL", "http://paperless:8000"),
             audiobookshelf_url: env_or("AUDIOBOOKSHELF_URL", "http://audiobookshelf:80"),
+            kavita_url: env_or("KAVITA_URL", "http://kavita:5000"),
 
             // Empty by default — loaded from DB by startup module.
             immich_admin_api_key: env_or("IMMICH_ADMIN_API_KEY", ""),
             jellyfin_admin_token: env_or("JELLYFIN_ADMIN_TOKEN", ""),
             paperless_admin_token: env_or("PAPERLESS_ADMIN_TOKEN", ""),
             audiobookshelf_admin_token: env_or("AUDIOBOOKSHELF_ADMIN_TOKEN", ""),
+            kavita_admin_api_key: env_or("KAVITA_ADMIN_API_KEY", ""),
 
             immich_admin_email: env_or("IMMICH_ADMIN_EMAIL", "admin@steadfirm.local"),
             jellyfin_admin_username: env_or("JELLYFIN_ADMIN_USERNAME", "admin"),
             paperless_admin_username: env_or("PAPERLESS_ADMIN_USERNAME", "admin"),
             audiobookshelf_admin_username: env_or("AUDIOBOOKSHELF_ADMIN_USERNAME", "root"),
+            kavita_admin_username: env_or("KAVITA_ADMIN_USERNAME", "admin"),
 
             files_storage_path: env_or("FILES_STORAGE_PATH", "/data/steadfirm/files"),
             media_storage_path: env_or("MEDIA_STORAGE_PATH", "/data/steadfirm/media"),
@@ -104,6 +111,7 @@ impl Config {
                 "AUDIOBOOKS_STORAGE_PATH",
                 "/data/steadfirm/audiobooks",
             ),
+            reading_storage_path: env_or("READING_STORAGE_PATH", "/data/steadfirm/reading"),
 
             jellyfin_device_id: env_or("JELLYFIN_DEVICE_ID", &uuid::Uuid::new_v4().to_string()),
 

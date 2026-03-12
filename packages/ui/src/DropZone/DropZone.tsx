@@ -1,7 +1,22 @@
 import { useCallback, useRef, useState } from 'react';
-import { Button, Select, Progress, Tag, Typography, Collapse, Spin } from 'antd';
-import { CloudArrowUp, Check, X, FolderOpen, File as FileIcon, CaretRight } from '@phosphor-icons/react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { Button, Select, Progress, Tag, Typography, Spin } from 'antd';
+import {
+  CloudArrowUp,
+  Check,
+  X,
+  FolderOpen,
+  File as FileIcon,
+  CaretRight,
+  Image,
+  FilmSlate,
+  FileText,
+  Headphones,
+  BookOpen,
+  HardDrives,
+  CircleNotch,
+  Sparkle,
+} from '@phosphor-icons/react';
+import { AnimatePresence, motion, LayoutGroup } from 'framer-motion';
 import { SERVICE_LABELS, SERVICE_COLORS, SERVICES, formatFileSize } from '@steadfirm/shared';
 import type { ServiceName, AudiobookGroup } from '@steadfirm/shared';
 import { colors, cssVar } from '@steadfirm/theme';
@@ -32,15 +47,41 @@ export interface UploadFileProgress {
   status: 'uploading' | 'done' | 'error';
 }
 
+/** A streamed classification result (one per file). */
+export interface StreamedClassification {
+  index: number;
+  service: ServiceName;
+  confidence: number;
+  reasoning?: string;
+  aiClassified: boolean;
+}
+
+export type StreamingPhase =
+  | 'idle'
+  | 'connecting'
+  | 'heuristics'
+  | 'classifying'
+  | 'done'
+  | 'error';
+
 export interface DropZoneProps {
   files: ClassifiedFile[];
-  step: 'select' | 'analyzing' | 'review' | 'upload';
+  step: 'select' | 'streaming' | 'review' | 'upload';
   uploadProgress: Map<string, UploadFileProgress>;
   audiobookGroups?: AudiobookGroup[];
   onFilesSelected: (files: DroppedFile[]) => void;
   onOverride: (index: number, service: ServiceName) => void;
   onConfirm: () => void;
   onReset: () => void;
+  // Streaming props
+  /** All dropped files (before classification). */
+  droppedFiles?: DroppedFile[];
+  /** Map of file index → classification result (populated progressively). */
+  streamedClassifications?: Map<number, StreamedClassification>;
+  /** Current streaming phase. */
+  streamingPhase?: StreamingPhase;
+  /** Number of files pending LLM classification. */
+  pendingCount?: number;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────
@@ -58,9 +99,17 @@ const stepVariants = {
   exit: { opacity: 0, y: -20, transition: { duration: 0.2 } },
 };
 
+const SERVICE_ICONS: Record<ServiceName, React.ReactNode> = {
+  photos: <Image size={18} weight="duotone" />,
+  media: <FilmSlate size={18} weight="duotone" />,
+  documents: <FileText size={18} weight="duotone" />,
+  audiobooks: <Headphones size={18} weight="duotone" />,
+  reading: <BookOpen size={18} weight="duotone" />,
+  files: <HardDrives size={18} weight="duotone" />,
+};
+
 // ─── Folder traversal helpers ────────────────────────────────────────
 
-/** Recursively read all files from a FileSystemDirectoryEntry. */
 function readDirectoryEntries(
   dirReader: FileSystemDirectoryReader,
 ): Promise<FileSystemEntry[]> {
@@ -80,12 +129,10 @@ function readDirectoryEntries(
   });
 }
 
-/** Convert a FileSystemFileEntry to a File with its relative path. */
 function entryToFile(entry: FileSystemFileEntry): Promise<DroppedFile> {
   return new Promise((resolve, reject) => {
     entry.file(
       (file) => {
-        // fullPath starts with `/`, strip the leading slash
         const relativePath = entry.fullPath.replace(/^\//, '');
         resolve({ file, relativePath });
       },
@@ -94,11 +141,9 @@ function entryToFile(entry: FileSystemFileEntry): Promise<DroppedFile> {
   });
 }
 
-/** Recursively collect all files from a FileSystemEntry tree. Skips zip files. */
 async function collectFilesFromEntry(entry: FileSystemEntry): Promise<DroppedFile[]> {
   if (entry.isFile) {
     const fileEntry = entry as FileSystemFileEntry;
-    // Leave zip files alone — drop them as-is without recursing
     if (fileEntry.name.toLowerCase().endsWith('.zip')) {
       const dropped = await entryToFile(fileEntry);
       return [dropped];
@@ -117,12 +162,10 @@ async function collectFilesFromEntry(entry: FileSystemEntry): Promise<DroppedFil
   return [];
 }
 
-/** Collect all files from a drop event, supporting both files and folders. */
 async function collectDroppedFiles(dataTransfer: DataTransfer): Promise<DroppedFile[]> {
   const items = dataTransfer.items;
   const results: DroppedFile[] = [];
 
-  // Try webkitGetAsEntry first for folder support
   const entries: FileSystemEntry[] = [];
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
@@ -138,7 +181,6 @@ async function collectDroppedFiles(dataTransfer: DataTransfer): Promise<DroppedF
     const nested = await Promise.all(entries.map(collectFilesFromEntry));
     results.push(...nested.flat());
   } else {
-    // Fallback: no webkitGetAsEntry support, use regular files
     const files = dataTransfer.files;
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -151,13 +193,11 @@ async function collectDroppedFiles(dataTransfer: DataTransfer): Promise<DroppedF
   return results;
 }
 
-/** Collect files from a file input change event (including directory picks). */
 function collectInputFiles(fileList: FileList): DroppedFile[] {
   const results: DroppedFile[] = [];
   for (let i = 0; i < fileList.length; i++) {
     const file = fileList[i];
     if (file) {
-      // webkitRelativePath is set when using directory picker
       const relativePath = file.webkitRelativePath || undefined;
       results.push({ file, relativePath });
     }
@@ -266,7 +306,6 @@ function SelectStep({
         </div>
       </div>
 
-      {/* Hidden file inputs */}
       <input
         ref={fileInputRef}
         type="file"
@@ -288,85 +327,111 @@ function SelectStep({
   );
 }
 
-// ─── Analyzing Step ──────────────────────────────────────────────────
+// ─── Streaming Step (category buckets fill in real-time) ─────────────
 
-function AnalyzingStep({ fileCount }: { fileCount: number }) {
-  return (
-    <motion.div
-      key="analyzing"
-      variants={stepVariants}
-      initial="initial"
-      animate="animate"
-      exit="exit"
-      style={{
-        maxWidth: 600,
-        margin: '0 auto',
-        padding: '80px 16px',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: 24,
-      }}
-    >
-      <Spin size="large" />
-      <Typography.Title level={4} style={{ margin: 0 }}>
-        Analyzing {fileCount} {fileCount === 1 ? 'file' : 'files'}...
-      </Typography.Title>
-      <Typography.Text type="secondary" style={{ textAlign: 'center' }}>
-        Classifying files and detecting audiobook groupings.
-        <br />
-        This may take a moment for large uploads.
-      </Typography.Text>
-    </motion.div>
-  );
-}
-
-// ─── Review Step (grouped by service) ────────────────────────────────
-
-function ReviewStep({
-  files,
+function StreamingStep({
+  droppedFiles,
+  classifications,
+  streamingPhase,
+  pendingCount,
   audiobookGroups,
   onOverride,
   onConfirm,
   onReset,
 }: {
-  files: ClassifiedFile[];
+  droppedFiles: DroppedFile[];
+  classifications: Map<number, StreamedClassification>;
+  streamingPhase: StreamingPhase;
+  pendingCount: number;
   audiobookGroups?: AudiobookGroup[];
   onOverride: (index: number, service: ServiceName) => void;
   onConfirm: () => void;
   onReset: () => void;
 }) {
-  // Group files by service
-  const grouped = new Map<ServiceName, { file: ClassifiedFile; index: number }[]>();
-  files.forEach((file, index) => {
-    const existing = grouped.get(file.service) ?? [];
-    existing.push({ file, index });
-    grouped.set(file.service, existing);
-  });
+  const isDone = streamingPhase === 'done' || streamingPhase === 'error';
+  const isClassifying = streamingPhase === 'classifying';
+  const classifiedCount = classifications.size;
+  const totalCount = droppedFiles.length;
 
-  // Sort services in the canonical order
-  const orderedServices = SERVICES.filter((s) => grouped.has(s));
+  // Group classified files by service
+  const buckets = new Map<ServiceName, Array<{ index: number; dropped: DroppedFile; classification: StreamedClassification }>>();
+  for (const [index, classification] of classifications) {
+    const dropped = droppedFiles[index];
+    if (!dropped) continue;
+    const existing = buckets.get(classification.service) ?? [];
+    existing.push({ index, dropped, classification });
+    buckets.set(classification.service, existing);
+  }
+
+  // Collect unclassified file indices
+  const unclassifiedIndices: number[] = [];
+  for (let i = 0; i < droppedFiles.length; i++) {
+    if (!classifications.has(i)) {
+      unclassifiedIndices.push(i);
+    }
+  }
+
+  const orderedServices = SERVICES.filter((s) => buckets.has(s));
 
   return (
     <motion.div
-      key="review"
+      key="streaming"
       variants={stepVariants}
       initial="initial"
       animate="animate"
       exit="exit"
       style={{ maxWidth: 700, margin: '0 auto', padding: '24px 16px' }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          Review classifications
-        </Typography.Title>
+      {/* Header with progress */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <Typography.Title level={4} style={{ margin: 0 }}>
+            {isDone ? 'Review classifications' : 'Classifying files'}
+          </Typography.Title>
+          {!isDone && (
+            <Spin size="small" />
+          )}
+        </div>
         <Typography.Text type="secondary">
-          {files.length} {files.length === 1 ? 'file' : 'files'}
+          {classifiedCount} / {totalCount} classified
         </Typography.Text>
       </div>
 
+      {/* Progress bar */}
+      {!isDone && (
+        <Progress
+          percent={Math.round((classifiedCount / totalCount) * 100)}
+          showInfo={false}
+          strokeColor={cssVar.accent}
+          style={{ marginBottom: 16 }}
+          size="small"
+        />
+      )}
+
+      {/* AI classifying indicator */}
+      {isClassifying && pendingCount > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '8px 12px',
+            marginBottom: 16,
+            borderRadius: 6,
+            background: `${cssVar.accent}12`,
+            border: `1px solid ${cssVar.accent}30`,
+            fontSize: 12,
+          }}
+        >
+          <Sparkle size={14} weight="fill" color={cssVar.accent} />
+          <Typography.Text style={{ fontSize: 12 }}>
+            AI is classifying {pendingCount} ambiguous {pendingCount === 1 ? 'file' : 'files'}...
+          </Typography.Text>
+        </div>
+      )}
+
       {/* Audiobook groupings banner */}
-      {audiobookGroups && audiobookGroups.length > 0 && (
+      {audiobookGroups && audiobookGroups.length > 0 && isDone && (
         <div
           style={{
             padding: '12px 16px',
@@ -389,98 +454,278 @@ function ReviewStep({
         </div>
       )}
 
-      {/* Grouped by service */}
-      <Collapse
-        defaultActiveKey={orderedServices}
-        style={{ marginBottom: 24 }}
-        items={orderedServices.map((service) => {
-          const items = grouped.get(service) ?? [];
-          return {
-            key: service,
-            label: (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Tag color={SERVICE_COLORS[service]} style={{ margin: 0, fontSize: 12 }}>
-                  {SERVICE_LABELS[service]}
-                </Tag>
+      {/* Category buckets */}
+      <LayoutGroup>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
+          {orderedServices.map((service) => {
+            const items = buckets.get(service) ?? [];
+            return (
+              <ServiceBucket
+                key={service}
+                service={service}
+                items={items}
+                isDone={isDone}
+                onOverride={onOverride}
+              />
+            );
+          })}
+
+          {/* Unclassified files (waiting for LLM) */}
+          {unclassifiedIndices.length > 0 && (
+            <motion.div
+              layout
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              style={{
+                borderRadius: 8,
+                border: '1px dashed var(--ant-color-border)',
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '10px 16px',
+                  background: 'var(--ant-color-bg-layout)',
+                }}
+              >
+                <CircleNotch size={16} weight="bold" style={{ animation: 'spin 1s linear infinite' }} />
+                <Typography.Text strong style={{ fontSize: 13 }}>
+                  Pending
+                </Typography.Text>
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {items.length} {items.length === 1 ? 'file' : 'files'}
+                  {unclassifiedIndices.length} {unclassifiedIndices.length === 1 ? 'file' : 'files'}
                 </Typography.Text>
               </div>
-            ),
-            children: (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {items.map(({ file: item, index }) => (
-                  <div
-                    key={`${item.file.name}-${index}`}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 12,
-                      padding: '8px 12px',
-                      border: '1px solid var(--ant-color-border)',
-                      borderRadius: 6,
-                      background: 'var(--ant-color-bg-container)',
-                    }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontWeight: 500,
-                          fontSize: 13,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {item.relativePath ?? item.file.name}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--ant-color-text-secondary)', marginTop: 1 }}>
-                        {formatFileSize(item.file.size)}
-                        {item.reasoning && (
-                          <span style={{ marginLeft: 8, fontStyle: 'italic' }}>
-                            — {item.reasoning}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
+              <div style={{ padding: '4px 8px' }}>
+                {unclassifiedIndices.map((idx) => {
+                  const dropped = droppedFiles[idx];
+                  if (!dropped) return null;
+                  return (
                     <div
+                      key={idx}
                       style={{
-                        fontSize: 11,
-                        color: 'var(--ant-color-text-tertiary)',
-                        minWidth: 36,
-                        textAlign: 'right',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '6px 8px',
+                        fontSize: 12,
+                        color: 'var(--ant-color-text-secondary)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
                       }}
                     >
-                      {Math.round(item.confidence * 100)}%
+                      <FileIcon size={12} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {dropped.relativePath ?? dropped.file.name}
+                      </span>
+                      <span style={{ marginLeft: 'auto', flexShrink: 0 }}>
+                        {formatFileSize(dropped.file.size)}
+                      </span>
                     </div>
-
-                    <Select
-                      size="small"
-                      value={item.service}
-                      onChange={(value) => onOverride(index, value)}
-                      options={serviceOptions}
-                      style={{ width: 130 }}
-                      popupMatchSelectWidth={false}
-                    />
-                  </div>
-                ))}
+                  );
+                })}
               </div>
-            ),
-          };
-        })}
-      />
+            </motion.div>
+          )}
+        </div>
+      </LayoutGroup>
 
-      <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-        <Button onClick={onReset}>Cancel</Button>
-        <Button
-          type="primary"
-          onClick={onConfirm}
-          style={{ background: cssVar.accent, borderColor: cssVar.accent }}
+      {/* Actions */}
+      {isDone && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}
         >
-          Upload All
-        </Button>
+          <Button onClick={onReset}>Cancel</Button>
+          <Button
+            type="primary"
+            onClick={onConfirm}
+            style={{ background: cssVar.accent, borderColor: cssVar.accent }}
+          >
+            Upload All
+          </Button>
+        </motion.div>
+      )}
+
+      {/* Spin animation keyframes */}
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </motion.div>
+  );
+}
+
+// ─── Service Bucket ──────────────────────────────────────────────────
+
+function ServiceBucket({
+  service,
+  items,
+  isDone,
+  onOverride,
+}: {
+  service: ServiceName;
+  items: Array<{ index: number; dropped: DroppedFile; classification: StreamedClassification }>;
+  isDone: boolean;
+  onOverride: (index: number, service: ServiceName) => void;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const color = SERVICE_COLORS[service];
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.97 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.25 }}
+      style={{
+        borderRadius: 8,
+        border: `1px solid ${color}40`,
+        overflow: 'hidden',
+      }}
+    >
+      {/* Bucket header */}
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '10px 16px',
+          background: `${color}10`,
+          cursor: 'pointer',
+          userSelect: 'none',
+        }}
+      >
+        <span style={{ color, display: 'flex', alignItems: 'center' }}>
+          {SERVICE_ICONS[service]}
+        </span>
+        <Typography.Text strong style={{ fontSize: 13 }}>
+          {SERVICE_LABELS[service]}
+        </Typography.Text>
+        <Tag
+          color={color}
+          style={{ margin: 0, fontSize: 11, lineHeight: '18px', padding: '0 6px' }}
+        >
+          {items.length}
+        </Tag>
+        <CaretRight
+          size={12}
+          weight="bold"
+          style={{
+            marginLeft: 'auto',
+            transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
+            transition: 'transform 0.2s ease',
+            color: 'var(--ant-color-text-tertiary)',
+          }}
+        />
       </div>
+
+      {/* File list */}
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            style={{ overflow: 'hidden' }}
+          >
+            <div style={{ padding: '4px 8px' }}>
+              <AnimatePresence initial={false}>
+                {items.map(({ index, dropped, classification }) => (
+                  <motion.div
+                    key={index}
+                    layout
+                    initial={{ opacity: 0, x: -10, height: 0 }}
+                    animate={{ opacity: 1, x: 0, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '6px 8px',
+                        borderRadius: 4,
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: 13,
+                            fontWeight: 500,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {dropped.relativePath ?? dropped.file.name}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--ant-color-text-secondary)', marginTop: 1 }}>
+                          {formatFileSize(dropped.file.size)}
+                          {classification.reasoning && (
+                            <span style={{ marginLeft: 8, fontStyle: 'italic' }}>
+                              — {classification.reasoning}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {classification.aiClassified && (
+                        <Tag
+                          style={{
+                            margin: 0,
+                            fontSize: 10,
+                            lineHeight: '16px',
+                            padding: '0 4px',
+                            background: `${cssVar.accent}15`,
+                            border: `1px solid ${cssVar.accent}30`,
+                            color: cssVar.accent,
+                          }}
+                        >
+                          AI
+                        </Tag>
+                      )}
+
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: 'var(--ant-color-text-tertiary)',
+                          minWidth: 30,
+                          textAlign: 'right',
+                        }}
+                      >
+                        {Math.round(classification.confidence * 100)}%
+                      </div>
+
+                      {isDone && (
+                        <Select
+                          size="small"
+                          value={classification.service}
+                          onChange={(value) => onOverride(index, value)}
+                          options={serviceOptions}
+                          style={{ width: 130 }}
+                          popupMatchSelectWidth={false}
+                        />
+                      )}
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -615,14 +860,41 @@ export function DropZone({
   onOverride,
   onConfirm,
   onReset,
+  droppedFiles,
+  streamedClassifications,
+  streamingPhase,
+  pendingCount,
 }: DropZoneProps) {
   return (
     <AnimatePresence mode="wait">
       {step === 'select' && <SelectStep onFilesSelected={onFilesSelected} />}
-      {step === 'analyzing' && <AnalyzingStep fileCount={files.length} />}
+      {step === 'streaming' && droppedFiles && streamedClassifications && streamingPhase && (
+        <StreamingStep
+          droppedFiles={droppedFiles}
+          classifications={streamedClassifications}
+          streamingPhase={streamingPhase}
+          pendingCount={pendingCount ?? 0}
+          audiobookGroups={audiobookGroups}
+          onOverride={onOverride}
+          onConfirm={onConfirm}
+          onReset={onReset}
+        />
+      )}
       {step === 'review' && (
-        <ReviewStep
-          files={files}
+        <StreamingStep
+          droppedFiles={droppedFiles ?? files.map((f) => ({ file: f.file, relativePath: f.relativePath }))}
+          classifications={
+            streamedClassifications ??
+            new Map(files.map((f, i) => [i, {
+              index: i,
+              service: f.service,
+              confidence: f.confidence,
+              reasoning: f.reasoning,
+              aiClassified: f.aiClassified ?? false,
+            }]))
+          }
+          streamingPhase="done"
+          pendingCount={0}
           audiobookGroups={audiobookGroups}
           onOverride={onOverride}
           onConfirm={onConfirm}

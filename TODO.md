@@ -183,3 +183,27 @@ Run as part of the deploy pipeline or as a Docker Compose `init` container. Must
 6. **File count per folder** — A folder with 3-5 audio files is likely a music album; 15+ is likely an audiobook.
 
 **Approach:** Add heuristics one at a time, test against real uploads, measure how many files still fall through to the LLM. Each heuristic should have clear confidence scoring and be easy to disable if it causes misclassification.
+
+---
+
+## Silent Failure Audit
+
+**Problem:** Multiple places in the codebase swallow errors silently — no user feedback, no console errors, no debug panel entries. When something breaks (e.g. an SSE stream fails to parse, a module fails to load, an API call silently returns unexpected data), the user sees nothing and has no way to diagnose the issue.
+
+**Areas to audit:**
+
+1. **SSE streaming hook** — `useStreamingClassify` catches errors but only sets phase to `'error'`. If the hook itself fails to initialize (e.g. import error), the UI shows nothing. Need visible error states in the DropZone UI.
+2. **Classification fallback** — When the LLM call fails, the backend sends heuristic results silently. The user has no indication that AI classification was unavailable. Should show a warning banner.
+3. **Heuristic-only mode** — When `ai.is_enabled()` is false, low-confidence files get heuristic results with no indication. Users should see that AI is disabled.
+4. **API error handling** — The `ky` client in `api/client.ts` logs errors but some callers (especially fire-and-forget patterns like `void doSomething()`) never surface the error to the user.
+5. **Debug panel clipboard** — `navigator.clipboard` is undefined on non-HTTPS contexts (LAN IP access). Was silently throwing. Fixed with optional chaining but should show a toast fallback.
+6. **Module loading** — Vite module loading failures (stale cache, broken imports) produce console errors but no user-visible indication. Consider an error boundary that catches and displays import failures.
+7. **Upload progress** — Upload failures set status to `'error'` but don't show what the error was. Should capture and display the error message.
+8. **Proxy buffering** — SSE streams through the Vite dev proxy can be silently buffered, making the streaming feel broken even though data is flowing. Need explicit `X-Accel-Buffering: no` and validation.
+
+**Principle:** Every error should be visible to at least one audience:
+- **Users:** Toast notification, inline error message, or error state in the UI
+- **Developers:** Console error, debug panel entry, or tracing log
+- **Both** for critical failures
+
+**Priority:** High — silent failures waste debugging time and erode trust in the system.

@@ -92,6 +92,7 @@ services:
       JELLYFIN_URL: http://jellyfin:8096
       PAPERLESS_URL: http://paperless:8000
       AUDIOBOOKSHELF_URL: http://audiobookshelf:80
+      KAVITA_URL: http://kavita:5000
       FILES_STORAGE_PATH: /data/steadfirm/files
     volumes:
       - steadfirm_files:/data/steadfirm/files
@@ -205,6 +206,22 @@ services:
       - steadfirm
 
   # ──────────────────────────────────────────────
+  # Reading — Kavita (ebooks, comics, manga)
+  # ──────────────────────────────────────────────
+
+  kavita:
+    image: ghcr.io/kareadita/kavita:latest
+    restart: unless-stopped
+    volumes:
+      - kavita_library:/books
+      - kavita_config:/kavita/config
+    environment:
+      - TZ=UTC
+    # No host ports — only reachable by steadfirm-backend via internal network
+    networks:
+      - steadfirm
+
+  # ──────────────────────────────────────────────
   # Reverse Proxy — Caddy
   # ──────────────────────────────────────────────
 
@@ -240,6 +257,8 @@ volumes:
   audiobooks_library:
   audiobookshelf_config:
   audiobookshelf_metadata:
+  kavita_library:
+  kavita_config:
   steadfirm_files:
   caddy_data:
   caddy_config:

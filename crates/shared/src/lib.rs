@@ -14,6 +14,8 @@ pub enum ServiceKind {
     Documents,
     /// Audiobook library and player (Audiobookshelf)
     Audiobooks,
+    /// Ebooks, comics, and manga (Kavita)
+    Reading,
     /// Unclassified files (Steadfirm storage)
     Files,
 }

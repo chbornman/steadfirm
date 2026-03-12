@@ -27,6 +27,17 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:3001',
         changeOrigin: true,
+        // Disable buffering for SSE streaming endpoints
+        configure: (proxy) => {
+          proxy.on('proxyRes', (proxyRes) => {
+            const contentType = proxyRes.headers['content-type'] ?? '';
+            if (contentType.includes('text/event-stream')) {
+              // Prevent http-proxy from buffering the SSE stream
+              proxyRes.headers['Cache-Control'] = 'no-cache';
+              proxyRes.headers['X-Accel-Buffering'] = 'no';
+            }
+          });
+        },
       },
     },
   },

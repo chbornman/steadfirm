@@ -1,4 +1,4 @@
-export const SERVICES = ['photos', 'media', 'documents', 'audiobooks', 'files'] as const;
+export const SERVICES = ['photos', 'media', 'documents', 'audiobooks', 'reading', 'files'] as const;
 export type ServiceName = (typeof SERVICES)[number];
 
 export const SERVICE_LABELS: Record<ServiceName, string> = {
@@ -6,6 +6,7 @@ export const SERVICE_LABELS: Record<ServiceName, string> = {
   media: 'Film & TV',
   documents: 'Documents',
   audiobooks: 'Audiobooks',
+  reading: 'Reading',
   files: 'Files',
 };
 
@@ -14,6 +15,7 @@ export const SERVICE_COLORS: Record<ServiceName, string> = {
   media: '#8B5CF6',
   documents: '#22C55E',
   audiobooks: '#D97706',
+  reading: '#EC4899',
   files: '#737373',
 };
 
@@ -34,6 +36,7 @@ export const ROUTES = {
   MUSIC_ARTIST: '/music/$artistId',
   DOCUMENTS: '/documents',
   AUDIOBOOKS: '/audiobooks',
+  READING: '/reading',
   FILES: '/files',
   UPLOAD: '/upload',
   SETTINGS: '/settings',

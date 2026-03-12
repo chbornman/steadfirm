@@ -173,9 +173,13 @@ function LogPairEntry({ pair }: { pair: DebugLogPair }) {
         parts.push(pair.response.data);
       }
 
-      void navigator.clipboard.writeText(parts.join('\n')).then(() => {
-        void message.success('Copied to clipboard');
-      });
+      // navigator.clipboard is undefined on non-HTTPS (LAN IP)
+      const clipboard = navigator.clipboard as Clipboard | undefined;
+      if (clipboard) {
+        void clipboard.writeText(parts.join('\n')).then(() => {
+          void message.success('Copied to clipboard');
+        });
+      }
     },
     [pair, message],
   );
@@ -355,10 +359,14 @@ function CodeBlock({
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
-    void navigator.clipboard.writeText(content).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
+    // navigator.clipboard is undefined on non-HTTPS (LAN IP)
+    const clipboard = navigator.clipboard as Clipboard | undefined;
+    if (clipboard) {
+      void clipboard.writeText(content).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      });
+    }
   }, [content]);
 
   // Try to pretty-print JSON

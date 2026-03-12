@@ -47,7 +47,7 @@ pub const AUDIOBOOKSHELF_SESSIONS_PAGE_SIZE: &str = "10";
 pub const JELLYFIN_WIZARD_SETTLE_SECS: u64 = 2;
 
 /// Total number of services that should be initialized.
-pub const EXPECTED_SERVICE_COUNT: usize = 4;
+pub const EXPECTED_SERVICE_COUNT: usize = 5;
 
 // ─── AI classification ───────────────────────────────────────────────
 
@@ -63,7 +63,8 @@ pub const DEFAULT_ANTHROPIC_MODEL: &str = "claude-sonnet-4-6";
 pub const DEFAULT_LOCAL_MODEL: &str = "default";
 
 /// Max tokens for the classification LLM response.
-pub const CLASSIFY_MAX_TOKENS: u64 = 4096;
+/// 4096 was too low — 48 files caused truncation after ~33 classifications.
+pub const CLASSIFY_MAX_TOKENS: u64 = 16384;
 
 /// Maximum number of files to send to the LLM in a single batch.
 /// Larger batches are chunked.

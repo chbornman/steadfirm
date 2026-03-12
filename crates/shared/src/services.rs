@@ -9,4 +9,6 @@ pub struct ServiceConfig {
     pub paperless_token: Option<String>,
     pub audiobookshelf_url: Option<String>,
     pub audiobookshelf_token: Option<String>,
+    pub kavita_url: Option<String>,
+    pub kavita_api_key: Option<String>,
 }
