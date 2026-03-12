@@ -133,6 +133,17 @@ export function ReaderPage() {
     void navigate({ to: `/reading/${seriesId}` });
   }, [navigate, seriesId]);
 
+  // Close reader on Escape key (skip if an Ant drawer/modal already handled it)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented) {
+        handleClose();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [handleClose]);
+
   // Loading state
   if (!chapterId || chapterLoading) {
     return (
