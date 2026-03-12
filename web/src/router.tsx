@@ -18,6 +18,8 @@ import { MediaMusicArtistPage } from '@/pages/MediaMusicArtist';
 import { DocumentsPage } from '@/pages/Documents';
 import { AudiobooksPage } from '@/pages/Audiobooks';
 import { AudiobookDetailPage } from '@/pages/AudiobookDetail';
+import { ReadingPage } from '@/pages/Reading';
+import { ReadingDetailPage } from '@/pages/ReadingDetail';
 import { FilesPage } from '@/pages/Files';
 import { UploadPage } from '@/pages/Upload';
 import { SettingsPage } from '@/pages/Settings';
@@ -163,6 +165,19 @@ const audiobookDetailRoute = createRoute({
   component: AudiobookDetailPage,
 });
 
+// Reading
+const readingRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/reading',
+  component: ReadingPage,
+});
+
+const readingDetailRoute = createRoute({
+  getParentRoute: () => appLayoutRoute,
+  path: '/reading/$seriesId',
+  component: ReadingDetailPage,
+});
+
 // Files
 const filesRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
@@ -200,6 +215,8 @@ const routeTree = rootRoute.addChildren([
     documentsRoute,
     audiobooksRoute,
     audiobookDetailRoute,
+    readingRoute,
+    readingDetailRoute,
     filesRoute,
     uploadRoute,
     settingsRoute,

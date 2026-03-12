@@ -23,7 +23,8 @@ async fn get_current_user(
     let has_any_service = user.credentials.immich.is_some()
         || user.credentials.jellyfin.is_some()
         || user.credentials.paperless.is_some()
-        || user.credentials.audiobookshelf.is_some();
+        || user.credentials.audiobookshelf.is_some()
+        || user.credentials.kavita.is_some();
 
     // Fallback: provision if webhook hasn't run yet.
     if !has_any_service {
@@ -49,6 +50,7 @@ async fn get_current_user(
                 "media": results.iter().any(|r| r.service == "jellyfin" && r.status == "provisioned"),
                 "documents": results.iter().any(|r| r.service == "paperless" && r.status == "provisioned"),
                 "audiobooks": results.iter().any(|r| r.service == "audiobookshelf" && r.status == "provisioned"),
+                "reading": results.iter().any(|r| r.service == "kavita" && r.status == "provisioned"),
                 "files": true,
             }
         })));
@@ -63,6 +65,7 @@ async fn get_current_user(
             "media": user.credentials.jellyfin.is_some(),
             "documents": user.credentials.paperless.is_some(),
             "audiobooks": user.credentials.audiobookshelf.is_some(),
+            "reading": user.credentials.kavita.is_some(),
             "files": true,
         }
     })))

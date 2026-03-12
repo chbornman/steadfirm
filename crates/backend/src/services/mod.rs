@@ -1,5 +1,6 @@
 pub mod ai;
 pub mod audiobookshelf;
+pub mod ffprobe;
 pub mod immich;
 pub mod jellyfin;
 pub mod kavita;

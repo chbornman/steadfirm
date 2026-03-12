@@ -48,5 +48,8 @@ export type {
   StreamingPhase,
 } from './DropZone';
 
+export { AudiobookReviewPanel } from './DropZone';
+export type { AudiobookReviewPanelProps, AudiobookGroupEditable } from './DropZone';
+
 export { Wordmark } from './Wordmark';
 export type { WordmarkProps } from './Wordmark';

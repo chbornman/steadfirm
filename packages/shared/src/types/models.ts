@@ -106,6 +106,16 @@ export interface Chapter {
   end: number;
 }
 
+export interface Series {
+  id: string;
+  name: string;
+  libraryId: number;
+  coverUrl: string;
+  pages: number;
+  format: string;
+  pagesRead: number;
+}
+
 export interface UserFile {
   id: string;
   filename: string;

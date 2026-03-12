@@ -90,6 +90,56 @@ export interface AudiobookGroup {
   title: string;
   /** Inferred author name (e.g. `Brandon Sanderson`). */
   author?: string;
+  /** Inferred series name (e.g. `Mistborn`). */
+  series?: string;
+  /** Series sequence/volume number (e.g. `1`, `2.5`). */
+  seriesSequence?: string;
+  /** Narrator name. */
+  narrator?: string;
+  /** Publish year (e.g. `2006`). */
+  year?: string;
   /** Indices into the request's files array that belong to this book. */
   fileIndices: number[];
+  /** Index of the cover image file, if detected in this group. */
+  coverIndex?: number;
+  /** Probe data extracted from audio files via ffprobe. */
+  probeData?: AudiobookProbeData;
+}
+
+/** Metadata extracted from audio file ID3/ffprobe tags, aggregated across a group. */
+export interface AudiobookProbeData {
+  /** Album tag (maps to audiobook title). */
+  album?: string;
+  /** Artist/album-artist tag (maps to author). */
+  artist?: string;
+  /** Composer tag (maps to narrator in ABS convention). */
+  composer?: string;
+  /** Genre tag. */
+  genre?: string;
+  /** Year/date tag. */
+  year?: string;
+  /** Series tag (from ID3 MVNM/series tag). */
+  series?: string;
+  /** Series part (from ID3 MVIN/series-part tag). */
+  seriesPart?: string;
+  /** Total duration in seconds across all files. */
+  totalDurationSecs: number;
+  /** Per-file probe results, ordered by track number. */
+  tracks: AudioFileProbe[];
+}
+
+/** Probe result for a single audio file. */
+export interface AudioFileProbe {
+  /** Index in the original files array. */
+  fileIndex: number;
+  /** Track number parsed from ID3 or filename. */
+  trackNumber?: number;
+  /** Disc number from ID3. */
+  discNumber?: number;
+  /** Duration of this file in seconds. */
+  durationSecs: number;
+  /** Title tag from ID3. */
+  title?: string;
+  /** Whether this file has an embedded cover image. */
+  hasEmbeddedCover: boolean;
 }

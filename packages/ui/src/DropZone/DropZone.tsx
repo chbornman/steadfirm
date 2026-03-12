@@ -20,6 +20,8 @@ import { AnimatePresence, motion, LayoutGroup } from 'framer-motion';
 import { SERVICE_LABELS, SERVICE_COLORS, SERVICES, formatFileSize } from '@steadfirm/shared';
 import type { ServiceName, AudiobookGroup } from '@steadfirm/shared';
 import { colors, cssVar } from '@steadfirm/theme';
+import { AudiobookReviewPanel } from './AudiobookReviewPanel';
+import type { AudiobookGroupEditable } from './AudiobookReviewPanel';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -68,7 +70,7 @@ export interface DropZoneProps {
   files: ClassifiedFile[];
   step: 'select' | 'streaming' | 'review' | 'upload';
   uploadProgress: Map<string, UploadFileProgress>;
-  audiobookGroups?: AudiobookGroup[];
+  audiobookGroups?: AudiobookGroupEditable[];
   onFilesSelected: (files: DroppedFile[]) => void;
   onOverride: (index: number, service: ServiceName) => void;
   onConfirm: () => void;
@@ -82,6 +84,10 @@ export interface DropZoneProps {
   streamingPhase?: StreamingPhase;
   /** Number of files pending LLM classification. */
   pendingCount?: number;
+  /** Called when the user edits audiobook group metadata. */
+  onAudiobookGroupChange?: (groupIndex: number, updates: Partial<AudiobookGroupEditable>) => void;
+  /** Whether audio files are being probed for metadata. */
+  isProbing?: boolean;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────
@@ -338,15 +344,19 @@ function StreamingStep({
   onOverride,
   onConfirm,
   onReset,
+  onAudiobookGroupChange,
+  isProbing,
 }: {
   droppedFiles: DroppedFile[];
   classifications: Map<number, StreamedClassification>;
   streamingPhase: StreamingPhase;
   pendingCount: number;
-  audiobookGroups?: AudiobookGroup[];
+  audiobookGroups?: AudiobookGroupEditable[];
   onOverride: (index: number, service: ServiceName) => void;
   onConfirm: () => void;
   onReset: () => void;
+  onAudiobookGroupChange?: (groupIndex: number, updates: Partial<AudiobookGroupEditable>) => void;
+  isProbing?: boolean;
 }) {
   const isDone = streamingPhase === 'done' || streamingPhase === 'error';
   const isClassifying = streamingPhase === 'classifying';
@@ -430,28 +440,19 @@ function StreamingStep({
         </div>
       )}
 
-      {/* Audiobook groupings banner */}
+      {/* Audiobook review panel */}
       {audiobookGroups && audiobookGroups.length > 0 && isDone && (
-        <div
-          style={{
-            padding: '12px 16px',
-            marginBottom: 16,
-            borderRadius: 8,
-            background: `${SERVICE_COLORS.audiobooks}15`,
-            border: `1px solid ${SERVICE_COLORS.audiobooks}40`,
-          }}
-        >
-          <Typography.Text strong style={{ fontSize: 13 }}>
-            Detected {audiobookGroups.length} audiobook{audiobookGroups.length > 1 ? 's' : ''}:
-          </Typography.Text>
-          {audiobookGroups.map((group, i) => (
-            <div key={i} style={{ fontSize: 12, marginTop: 4, color: 'var(--ant-color-text-secondary)' }}>
-              <CaretRight size={10} weight="bold" style={{ marginRight: 4 }} />
-              {group.author ? `${group.author} — ` : ''}{group.title}
-              {' '}({group.fileIndices.length} file{group.fileIndices.length > 1 ? 's' : ''})
-            </div>
-          ))}
-        </div>
+        <AudiobookReviewPanel
+          groups={audiobookGroups}
+          fileNames={new Map(
+            droppedFiles.map((d, i) => [
+              i,
+              { name: d.file.name, size: d.file.size, relativePath: d.relativePath },
+            ]),
+          )}
+          onGroupChange={onAudiobookGroupChange ?? (() => {})}
+          isProbing={isProbing}
+        />
       )}
 
       {/* Category buckets */}
@@ -864,6 +865,8 @@ export function DropZone({
   streamedClassifications,
   streamingPhase,
   pendingCount,
+  onAudiobookGroupChange,
+  isProbing,
 }: DropZoneProps) {
   return (
     <AnimatePresence mode="wait">
@@ -878,6 +881,8 @@ export function DropZone({
           onOverride={onOverride}
           onConfirm={onConfirm}
           onReset={onReset}
+          onAudiobookGroupChange={onAudiobookGroupChange}
+          isProbing={isProbing}
         />
       )}
       {step === 'review' && (
@@ -899,6 +904,8 @@ export function DropZone({
           onOverride={onOverride}
           onConfirm={onConfirm}
           onReset={onReset}
+          onAudiobookGroupChange={onAudiobookGroupChange}
+          isProbing={isProbing}
         />
       )}
       {step === 'upload' && (

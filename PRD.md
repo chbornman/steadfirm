@@ -2,7 +2,7 @@
 
 ## One-liner
 
-A single app and managed server that gives non-technical people a private, unified digital life — photos, media, documents, and audiobooks — backed by best-in-class open-source services they never need to know about.
+A single app and managed server that gives non-technical people a private, unified digital life — photos, media, documents, audiobooks, and reading — backed by best-in-class open-source services they never need to know about.
 
 ## The Problem
 
@@ -12,9 +12,10 @@ People's digital lives are fragmented across services that spy on them:
 - **Movies and music** are rented, not owned — they disappear when licenses expire
 - **Documents** are in Google Drive or Dropbox — searchable by the provider
 - **Audiobooks** are in Audible — DRM-locked, non-transferable
+- **Ebooks and comics** are in Kindle or scattered across devices — DRM-locked, non-portable
 - **Files** are scattered across devices with no unified access
 
-Self-hosted alternatives exist for every one of these (Immich, Jellyfin, Paperless-ngx, Audiobookshelf). They're excellent. But setting them up requires Docker knowledge, Linux experience, DNS configuration, SSL certificates, ongoing maintenance, and the willingness to debug things at 11pm.
+Self-hosted alternatives exist for every one of these (Immich, Jellyfin, Paperless-ngx, Audiobookshelf, Kavita). They're excellent. But setting them up requires Docker knowledge, Linux experience, DNS configuration, SSL certificates, ongoing maintenance, and the willingness to debug things at 11pm.
 
 **The gap:** There is no product that gives normal people the benefits of self-hosting without any of the complexity. Every existing solution (Umbrel, CasaOS, Cloudron, YunoHost) is an app store for tinkerers. They sell autonomy and choice. Most people don't want choice — they want it to work.
 
@@ -28,7 +29,7 @@ The pitch to friends and family: **"I'll handle everything. You open the app, an
 
 - A web app (Tauri desktop + mobile to follow)
 - Sign in once (email + password or Google OAuth)
-- Five tabs: Photos, Media, Documents, Audiobooks, Files
+- Six tabs: Photos, Media, Documents, Audiobooks, Reading, Files
 - A universal **drop zone**: upload any file, confirm the suggested destination, done
 - Beautiful display and playback for photos, video, audio, and documents
 
@@ -39,7 +40,7 @@ The pitch to friends and family: **"I'll handle everything. You open the app, an
 - Database management
 - SSL certificates
 - Backup schedules
-- Any of the words "Immich," "Jellyfin," or "Paperless"
+- Any of the words "Immich," "Jellyfin," "Paperless," or "Kavita"
 
 ## Product Decisions (v1.0)
 
@@ -50,7 +51,8 @@ The pitch to friends and family: **"I'll handle everything. You open the app, an
 | Jellyfin media | Per-user libraries. Each user uploads their own content. No shared media library. |
 | Audiobook library | Per-user. No sharing between users. |
 | Photo sharing | No sharing in v1. Each user's photos are private. |
-| Drop zone behavior | Show MIME-based recommendation, ask user to confirm/edit destination. Improve over time toward seamless auto-routing. |
+| Ebook/comic library | Per-user. Kavita handles EPUBs, comics (CBZ/CBR), manga, and long-form PDFs. No sharing between users. |
+| Drop zone behavior | Show MIME-based recommendation, ask user to confirm/edit destination. AI-powered classification for ambiguous files (e.g. PDF → Documents or Reading). Improve over time toward seamless auto-routing. |
 | File catchall | Unclassified files stay in Steadfirm's own storage (Postgres metadata + local disk). No Nextcloud. |
 | Music | Handled by Jellyfin. No separate music service. |
 | Budgeting | Future roadmap. Not in v1. |
@@ -71,6 +73,7 @@ Single shared instances, multi-tenant by design:
 | Jellyfin | Media | Movies, TV shows, music | Yes — per-user accounts and libraries |
 | Paperless-ngx | Documents | PDFs, receipts, scanned docs, OCR | Yes — per-user ownership and permissions |
 | Audiobookshelf | Audiobooks | Audiobook library and player | Yes — per-user accounts, progress tracking |
+| Kavita | Reading | Ebooks, comics, manga | Yes — per-user accounts, reading progress |
 | Steadfirm (itself) | Files | Unclassified uploads, review queue | N/A — built into the backend |
 
 ### Steadfirm layer (built by us)
@@ -91,7 +94,7 @@ The `web/` and `crates/app/src/` are **separate React applications** that share 
 
 ### Container architecture
 
-~11 containers total (not per user):
+~12 containers total (not per user):
 
 ```
 Caddy (reverse proxy + TLS)
@@ -103,6 +106,7 @@ Immich Machine Learning
 Jellyfin
 Paperless-ngx
 Audiobookshelf
+Kavita
 PostgreSQL (shared: steadfirm + immich + paperless + betterauth databases)
 Redis (shared: immich + paperless)
 ```
@@ -132,6 +136,7 @@ When a new user is added:
    - Jellyfin: `POST /Users/New`
    - Paperless: `POST /api/users/`
    - Audiobookshelf: `POST /api/users`
+   - Kavita: `POST /api/Account/invite` → confirm → login → create API key
 4. Backend stores returned user IDs and API keys/tokens (encrypted) in the `service_connections` table
 5. User opens the app — everything works
 
@@ -146,10 +151,13 @@ The user uploads files to Steadfirm. The backend classifies and presents a recom
 | MP4, MKV (video, long duration, movie-like filename) | Media (Jellyfin video library) |
 | MP3, FLAC, M4A (audio, short-form, ID3 tags) | Media (Jellyfin music library) |
 | M4B, MP3 (audio, long-form, author/title metadata) | Audiobooks (Audiobookshelf) |
-| PDF, DOCX, images of documents | Documents (Paperless-ngx) |
+| EPUB, MOBI, AZW, FB2 (ebook formats) | Reading (Kavita) |
+| CBZ, CBR, CB7, CBT, CBA (comic archive formats) | Reading (Kavita) |
+| PDF — ambiguous (confidence: 0.5) | Documents or Reading — LLM decides based on filename/context |
+| DOCX, images of documents | Documents (Paperless-ngx) |
 | Anything else | Files (Steadfirm storage) |
 
-v1 classification: MIME type + file extension + basic metadata heuristics. User always confirms. Over time, reduce confirmation friction as classification improves.
+v1 classification: MIME type + file extension + basic metadata heuristics as first pass. For ambiguous files (below confidence threshold), an LLM classifies using filename, MIME type, and batch context. SSE streaming delivers results in real time. User always confirms. Over time, reduce confirmation friction as classification improves.
 
 **Jellyfin media ingestion note:** Movies and shows require correct folder structure and naming for Jellyfin to scrape metadata. The drop zone must handle TMDb/MusicBrainz lookup, rename, and placement into the correct library path within the user's Jellyfin media directory.
 
@@ -162,8 +170,8 @@ Prove the unified experience works for 5-10 friends and family on a single dedic
 ### Scope
 
 **In scope:**
-- Web app with five tabs: Photos, Media, Documents, Audiobooks, Files
-- Display and playback: photo grid + lightbox, video streaming, audio playback, document viewer
+- Web app with six tabs: Photos, Media, Documents, Audiobooks, Reading, Files
+- Display and playback: photo grid + lightbox, video streaming, audio playback, document viewer, ebook/comic reader
 - BetterAuth authentication (email + password, Google OAuth)
 - Backend API proxying to all four services
 - Drop zone with MIME-based classification + user confirmation
@@ -198,7 +206,7 @@ Single dedicated server:
 
 1. 5 real users actively using the service for 30 days
 2. Users can upload files via drop zone and files arrive in the correct service
-3. Users can browse photos, watch video, listen to music/audiobooks, read documents — all from one login
+3. Users can browse photos, watch video, listen to music/audiobooks, read ebooks/comics, read documents — all from one login
 4. No data cross-contamination between users
 5. Operator (Caleb) spends < 1 hour/week on maintenance
 
@@ -226,7 +234,7 @@ Single dedicated server:
 - SimpleFIN bank sync integration
 - Household/combined accounts with shared libraries
 - Sharing between users (photos, media, documents)
-- Additional services: Vaultwarden (passwords), Kavita (ebooks)
+- Additional services: Vaultwarden (passwords)
 - Power user mode: direct access to underlying service UIs
 
 ### Phase 5 — Scale

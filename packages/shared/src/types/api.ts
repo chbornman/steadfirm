@@ -4,6 +4,7 @@ import type {
   TvShow,
   Document,
   Audiobook,
+  Series,
   UserFile,
 } from './models';
 
@@ -20,6 +21,7 @@ export type MovieListResponse = PaginatedResponse<Movie>;
 export type ShowListResponse = PaginatedResponse<TvShow>;
 export type DocumentListResponse = PaginatedResponse<Document>;
 export type AudiobookListResponse = PaginatedResponse<Audiobook>;
+export type SeriesListResponse = PaginatedResponse<Series>;
 export type FileListResponse = PaginatedResponse<UserFile>;
 
 export interface UploadResponse {
@@ -31,7 +33,7 @@ export interface UploadedFileClassification {
   filename: string;
   mimeType: string;
   sizeBytes: number;
-  suggestedService: 'photos' | 'media' | 'documents' | 'audiobooks' | 'files';
+  suggestedService: 'photos' | 'media' | 'documents' | 'audiobooks' | 'reading' | 'files';
   confidence: number;
 }
 

@@ -8,6 +8,7 @@ export type TabKey =
   | '/music'
   | '/documents'
   | '/audiobooks'
+  | '/reading'
   | '/files';
 
 /** All tab keys in display order. */
@@ -17,6 +18,7 @@ export const ALL_TAB_KEYS: TabKey[] = [
   '/music',
   '/documents',
   '/audiobooks',
+  '/reading',
   '/files',
 ];
 
@@ -27,6 +29,7 @@ export const TAB_LABELS: Record<TabKey, string> = {
   '/music': 'Music',
   '/documents': 'Documents',
   '/audiobooks': 'Audiobooks',
+  '/reading': 'Reading',
   '/files': 'Files',
 };
 

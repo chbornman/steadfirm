@@ -10,6 +10,7 @@ export type {
   Document,
   Audiobook,
   Chapter,
+  Series,
   UserFile,
 } from './types/models';
 
@@ -20,6 +21,7 @@ export type {
   ShowListResponse,
   DocumentListResponse,
   AudiobookListResponse,
+  SeriesListResponse,
   FileListResponse,
   UploadResponse,
   UploadedFileClassification,
@@ -35,6 +37,8 @@ export type {
   FileEntry,
   FileClassificationResult,
   AudiobookGroup,
+  AudiobookProbeData,
+  AudioFileProbe,
 } from './types/classify';
 
 export {

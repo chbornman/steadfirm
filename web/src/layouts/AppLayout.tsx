@@ -9,6 +9,7 @@ import {
   MusicNote,
   FileText,
   Headphones,
+  BookOpenText,
   Folder,
   CloudArrowUp,
   Sun,
@@ -49,6 +50,7 @@ const navItems: NavItem[] = [
   { key: '/music', label: 'Music', icon: MusicNote },
   { key: '/documents', label: 'Documents', icon: FileText },
   { key: '/audiobooks', label: 'Audiobooks', icon: Headphones },
+  { key: '/reading', label: 'Reading', icon: BookOpenText },
   { key: '/files', label: 'Files', icon: Folder },
 ];
 

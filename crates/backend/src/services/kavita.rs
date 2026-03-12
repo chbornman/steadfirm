@@ -55,14 +55,15 @@ impl KavitaClient {
         Ok(resp.json().await?)
     }
 
-    /// List series in a library.
+    /// List series in a library. Returns (items, total_count).
+    /// Kavita returns pagination metadata in a `Pagination` response header.
     pub async fn list_series(
         &self,
         api_key: &str,
         library_id: i64,
         page: u32,
         page_size: u32,
-    ) -> Result<Value, AppError> {
+    ) -> Result<(Value, u64), AppError> {
         let resp = self
             .request_api_key(reqwest::Method::POST, "/api/Series/v2", api_key)
             .json(&serde_json::json!({
@@ -79,7 +80,18 @@ impl KavitaClient {
             .send()
             .await?;
         let resp = check_response("kavita", resp).await?;
-        Ok(resp.json().await?)
+
+        // Parse total count from Kavita's Pagination header.
+        let total = resp
+            .headers()
+            .get("pagination")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| serde_json::from_str::<Value>(s).ok())
+            .and_then(|v| v["totalItems"].as_u64())
+            .unwrap_or(0);
+
+        let items: Value = resp.json().await?;
+        Ok((items, total))
     }
 
     /// Get a single series with details.
@@ -94,6 +106,24 @@ impl KavitaClient {
             .await?;
         let resp = check_response("kavita", resp).await?;
         Ok(resp.json().await?)
+    }
+
+    /// Get the cover image for a series.
+    pub async fn get_series_cover(
+        &self,
+        api_key: &str,
+        series_id: i64,
+    ) -> Result<reqwest::Response, AppError> {
+        let resp = self
+            .request_api_key(
+                reqwest::Method::GET,
+                &format!("/api/image/series-cover?seriesId={series_id}"),
+                api_key,
+            )
+            .send()
+            .await?;
+        let resp = check_response("kavita", resp).await?;
+        Ok(resp)
     }
 
     /// Trigger a library scan (after uploading files).

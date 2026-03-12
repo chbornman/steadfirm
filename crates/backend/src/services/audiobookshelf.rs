@@ -190,6 +190,103 @@ impl AudiobookshelfClient {
         Ok(resp.json().await?)
     }
 
+    /// Find the first book-type library and its first folder.
+    /// Returns `(library_id, folder_id)`.
+    pub async fn get_book_library_info(&self, token: &str) -> Result<(String, String), AppError> {
+        let libraries = self.get_libraries(token).await?;
+        let libs = libraries["libraries"]
+            .as_array()
+            .ok_or_else(|| AppError::Internal(anyhow::anyhow!("invalid libraries response")))?;
+
+        for lib in libs {
+            if lib["mediaType"].as_str() == Some("book") {
+                let lib_id = lib["id"]
+                    .as_str()
+                    .ok_or_else(|| AppError::Internal(anyhow::anyhow!("library missing id")))?;
+                let folder_id = lib["folders"]
+                    .as_array()
+                    .and_then(|f| f.first())
+                    .and_then(|f| f["id"].as_str())
+                    .ok_or_else(|| AppError::Internal(anyhow::anyhow!("library has no folders")))?;
+                return Ok((lib_id.to_string(), folder_id.to_string()));
+            }
+        }
+
+        Err(AppError::Internal(anyhow::anyhow!(
+            "no book-type library found in Audiobookshelf"
+        )))
+    }
+
+    /// Upload an audiobook to ABS using the upload API.
+    ///
+    /// This creates the proper folder structure (`Author/Series/Title/`)
+    /// and triggers a library scan automatically.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upload_book(
+        &self,
+        token: &str,
+        library_id: &str,
+        folder_id: &str,
+        title: &str,
+        author: Option<&str>,
+        series: Option<&str>,
+        files: Vec<(String, Vec<u8>, String)>, // (filename, data, mime_type)
+    ) -> Result<(), AppError> {
+        let mut form = reqwest::multipart::Form::new()
+            .text("title", title.to_string())
+            .text("library", library_id.to_string())
+            .text("folder", folder_id.to_string());
+
+        if let Some(author) = author {
+            form = form.text("author", author.to_string());
+        }
+        if let Some(series) = series {
+            form = form.text("series", series.to_string());
+        }
+
+        for (i, (filename, data, mime_type)) in files.into_iter().enumerate() {
+            let part = reqwest::multipart::Part::bytes(data)
+                .file_name(filename)
+                .mime_str(&mime_type)
+                .map_err(|e| AppError::Internal(anyhow::anyhow!("mime error: {e}")))?;
+            form = form.part(i.to_string(), part);
+        }
+
+        let resp = self
+            .http
+            .post(format!("{}/api/upload", self.base_url))
+            .header("authorization", format!("Bearer {token}"))
+            .multipart(form)
+            .send()
+            .await?;
+
+        check_response("audiobookshelf", resp).await?;
+        Ok(())
+    }
+
+    /// Trigger a library scan.
+    pub async fn scan_library(&self, token: &str, library_id: &str) -> Result<(), AppError> {
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                &format!("/api/libraries/{library_id}/scan"),
+                token,
+            )
+            .send()
+            .await?;
+        // Scan returns 200 with no body on success
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(AppError::Internal(anyhow::anyhow!(
+                "ABS scan failed ({}): {}",
+                status,
+                body
+            )));
+        }
+        Ok(())
+    }
+
     // --- Admin endpoints (for provisioning) ---
 
     /// Create a user.

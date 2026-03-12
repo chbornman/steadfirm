@@ -36,6 +36,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", post(classify))
         .route("/stream", post(classify_stream))
+        .route("/probe", post(probe_audiobook_files))
         .route("/provider", axum::routing::get(get_provider))
         .route("/provider", axum::routing::put(set_provider))
 }
@@ -519,6 +520,77 @@ async fn classify_stream(
     )
 }
 
+// ─── Audiobook file probing ──────────────────────────────────────────
+
+/// POST /api/v1/classify/probe
+///
+/// Accepts multipart upload of audio files and runs ffprobe on each to
+/// extract ID3 tags, duration, and embedded cover art. Returns aggregated
+/// probe data for populating the audiobook review UI.
+///
+/// This is called after classification identifies audiobook groups, so
+/// the frontend can show accurate metadata before the user confirms upload.
+async fn probe_audiobook_files(
+    State(_state): State<AppState>,
+    _user: AuthUser,
+    mut multipart: axum::extract::Multipart,
+) -> Result<Json<Vec<steadfirm_shared::classify::AudioFileProbe>>, AppError> {
+    use crate::services::ffprobe;
+
+    let mut probes: Vec<(usize, steadfirm_shared::classify::AudioFileProbe)> = Vec::new();
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("multipart error: {e}")))?
+    {
+        // The field name is the file index as a string
+        let field_name = field.name().unwrap_or("").to_string();
+        let file_index: usize = match field_name.parse() {
+            Ok(idx) => idx,
+            Err(_) => continue, // skip non-index fields
+        };
+
+        let filename = field.file_name().unwrap_or("audio.mp3").to_string();
+        let data = field
+            .bytes()
+            .await
+            .map_err(|e| AppError::BadRequest(format!("failed to read file: {e}")))?;
+
+        match ffprobe::probe_bytes(&data, &filename).await {
+            Ok(result) => {
+                let mut probe = result.to_audio_file_probe(file_index);
+                // If ffprobe didn't find a track number in ID3, try the filename
+                if probe.track_number.is_none() {
+                    probe.track_number = ffprobe::parse_track_from_filename(&filename);
+                }
+                probes.push((file_index, probe));
+            }
+            Err(e) => {
+                tracing::warn!(file_index, filename = %filename, error = %e, "ffprobe failed");
+                // Return a minimal probe with zero duration
+                probes.push((
+                    file_index,
+                    steadfirm_shared::classify::AudioFileProbe {
+                        file_index,
+                        track_number: ffprobe::parse_track_from_filename(&filename),
+                        disc_number: None,
+                        duration_secs: 0.0,
+                        title: None,
+                        has_embedded_cover: false,
+                    },
+                ));
+            }
+        }
+    }
+
+    // Sort by file index
+    probes.sort_by_key(|(idx, _)| *idx);
+    let results: Vec<_> = probes.into_iter().map(|(_, p)| p).collect();
+
+    Ok(Json(results))
+}
+
 // ─── Dev-only: provider switching ────────────────────────────────────
 
 #[derive(Serialize)]
@@ -671,9 +743,9 @@ fn heuristic_classify(index: usize, file: &FileEntry) -> FileClassificationResul
             (ServiceKind::Media, 0.5)
         }
 
-        // Audio — could be music or audiobook; let LLM decide
+        // Audio — check for audiobook signals before falling back to LLM
         "mp3" | "flac" | "ogg" | "aac" | "wma" | "opus" | "m4a" | "wav" => {
-            (ServiceKind::Media, 0.5)
+            heuristic_classify_audio(file)
         }
 
         // MIME fallbacks
@@ -695,6 +767,69 @@ fn heuristic_classify(index: usize, file: &FileEntry) -> FileClassificationResul
         reasoning: None,
         ai_classified: false,
     }
+}
+
+/// Enhanced heuristic for audio files that checks for audiobook signals
+/// before deferring to the LLM.
+fn heuristic_classify_audio(file: &FileEntry) -> (ServiceKind, f32) {
+    let lower_name = file.filename.to_lowercase();
+    let lower_path = file.relative_path.as_deref().unwrap_or("").to_lowercase();
+
+    let combined = format!("{} {}", lower_path, lower_name);
+
+    // Strong audiobook signals in filename or path
+    let audiobook_keywords = crate::constants::AUDIOBOOK_FILENAME_KEYWORDS;
+    let has_audiobook_keyword = audiobook_keywords.iter().any(|kw| {
+        // Match as whole word or prefix — "chapter01" should match "chapter"
+        // but "chard" should not match "ch"
+        let kw_len = kw.len();
+        combined.match_indices(kw).any(|(pos, _)| {
+            // Check it's a word boundary before the match
+            let before_ok = pos == 0 || !combined.as_bytes()[pos - 1].is_ascii_alphanumeric();
+            // Check after the keyword: either end, a digit, or non-alpha
+            let after_pos = pos + kw_len;
+            let after_ok = after_pos >= combined.len()
+                || !combined.as_bytes()[after_pos].is_ascii_alphabetic();
+            before_ok && after_ok
+        })
+    });
+
+    // Check for sequential chapter numbering patterns
+    let has_chapter_numbering = {
+        let patterns = [
+            // "01 - ", "01_", "01.", matches leading numbers
+            lower_name
+                .chars()
+                .take_while(|c| c.is_ascii_digit())
+                .count()
+                >= 2,
+        ];
+        patterns.iter().any(|p| *p)
+    };
+
+    // Check folder structure for audiobook-like patterns
+    // e.g., "Author Name/Book Title/" has exactly 2+ levels and no music indicators
+    let path_segments: Vec<&str> = lower_path.split('/').filter(|s| !s.is_empty()).collect();
+    let has_bookish_folder = path_segments.len() >= 2
+        && !lower_path.contains("music")
+        && !lower_path.contains("album")
+        && !lower_path.contains("discography")
+        && !lower_path.contains("playlist");
+
+    // If we have strong audiobook signals, classify with high confidence
+    if has_audiobook_keyword && has_bookish_folder {
+        return (ServiceKind::Audiobooks, 0.92);
+    }
+    if has_audiobook_keyword {
+        return (ServiceKind::Audiobooks, 0.88);
+    }
+    // Sequential numbering in a bookish folder structure
+    if has_chapter_numbering && has_bookish_folder {
+        return (ServiceKind::Audiobooks, 0.75);
+    }
+
+    // Default: ambiguous, let LLM decide
+    (ServiceKind::Media, 0.5)
 }
 
 /// Parse an LLM JSON response into `LlmClassifyResult`, handling multiple
@@ -732,6 +867,123 @@ fn parse_service(s: &str) -> ServiceKind {
 
 // ─── Audiobook grouping ──────────────────────────────────────────────
 
+/// Image extensions that might be a cover image.
+const COVER_IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp"];
+
+/// Check if a filename looks like a cover image.
+fn is_cover_image(filename: &str) -> bool {
+    let lower = filename.to_lowercase();
+    let ext = lower.rsplit('.').next().unwrap_or("");
+    if !COVER_IMAGE_EXTENSIONS.contains(&ext) {
+        return false;
+    }
+    let stem = lower.rsplit('.').next_back().unwrap_or(&lower);
+    stem.contains("cover") || stem.contains("folder") || stem.contains("front")
+}
+
+/// Parse an ABS-style title folder name to extract metadata.
+///
+/// Supports patterns like:
+///   - `Wizards First Rule`
+///   - `1994 - Wizards First Rule`
+///   - `Vol 1 - 1994 - Wizards First Rule {Sam Tsoutsouvas}`
+///   - `Book 2 - Title - Subtitle`
+fn parse_title_folder(
+    folder_name: &str,
+) -> (String, Option<String>, Option<String>, Option<String>) {
+    let mut title = folder_name.to_string();
+    let mut narrator: Option<String> = None;
+    let mut year: Option<String> = None;
+    let mut sequence: Option<String> = None;
+
+    // Extract narrator from curly braces: {Narrator Name}
+    if let Some(open) = title.find('{') {
+        if let Some(close) = title.find('}') {
+            if close > open {
+                narrator = Some(title[open + 1..close].trim().to_string());
+                title = format!("{}{}", &title[..open], &title[close + 1..]);
+                title = title.trim().to_string();
+            }
+        }
+    }
+
+    // Split by " - " to parse segments
+    let segments: Vec<&str> = title.split(" - ").map(|s| s.trim()).collect();
+
+    if segments.len() >= 2 {
+        let mut remaining = Vec::new();
+        for seg in &segments {
+            let trimmed = seg.trim_start_matches('(').trim_end_matches(')');
+            // Check for year (4 digits)
+            if year.is_none() && trimmed.len() == 4 && trimmed.chars().all(|c| c.is_ascii_digit()) {
+                year = Some(trimmed.to_string());
+                continue;
+            }
+            // Check for sequence: "Vol 1", "Volume 2", "Book 3", bare "1"
+            if sequence.is_none() {
+                let lower = trimmed.to_lowercase();
+                let seq = extract_sequence(&lower);
+                if seq.is_some() {
+                    sequence = seq;
+                    continue;
+                }
+            }
+            remaining.push(*seg);
+        }
+        title = remaining.join(" - ");
+    } else if !title.is_empty() {
+        // Check for leading year: "1994 - Title" was already split above
+        // Check for leading "(1994)" pattern in single-segment names
+        let trimmed = title.trim_start_matches('(');
+        if trimmed.len() >= 4 && trimmed[..4].chars().all(|c| c.is_ascii_digit()) {
+            if let Some(rest) = trimmed.get(4..) {
+                let rest = rest
+                    .trim_start_matches(')')
+                    .trim_start_matches(" - ")
+                    .trim();
+                if !rest.is_empty() {
+                    year = Some(trimmed[..4].to_string());
+                    title = rest.to_string();
+                }
+            }
+        }
+    }
+
+    (title, year, sequence, narrator)
+}
+
+/// Try to extract a sequence number from a string like "vol 1", "book 2", "1", "1."
+fn extract_sequence(s: &str) -> Option<String> {
+    let prefixes = ["vol ", "vol. ", "volume ", "book "];
+    for prefix in &prefixes {
+        if let Some(rest) = s.strip_prefix(prefix) {
+            let num: String = rest
+                .chars()
+                .take_while(|c| c.is_ascii_digit() || *c == '.')
+                .collect();
+            if !num.is_empty() {
+                return Some(num.trim_end_matches('.').to_string());
+            }
+        }
+    }
+    // Check for bare number at start: "1 - Title" or "1. Title"
+    let num: String = s
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.')
+        .collect();
+    if !num.is_empty() && num.len() <= 4 {
+        let after = &s[num.len()..];
+        if after.is_empty()
+            || after.starts_with(". ")
+            || after.starts_with(' ')
+            || after.starts_with('.')
+        {
+            return Some(num.trim_end_matches('.').to_string());
+        }
+    }
+    None
+}
+
 fn detect_audiobook_groups(
     files: &[FileEntry],
     results: &[FileClassificationResult],
@@ -746,6 +998,43 @@ fn detect_audiobook_groups(
     if audiobook_indices.is_empty() {
         return vec![];
     }
+
+    // Also collect cover images that share folders with audiobook files
+    let audiobook_folders: std::collections::HashSet<String> = audiobook_indices
+        .iter()
+        .filter_map(|&idx| {
+            let file = &files[idx];
+            file.relative_path.as_ref().and_then(|p| {
+                let parts: Vec<&str> = p.split('/').collect();
+                if parts.len() >= 2 {
+                    Some(parts[..parts.len() - 1].join("/"))
+                } else {
+                    None
+                }
+            })
+        })
+        .collect();
+
+    // Find cover images in audiobook folders (even if classified as photos)
+    let cover_images: HashMap<String, usize> = files
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, file)| {
+            if !is_cover_image(&file.filename) {
+                return None;
+            }
+            file.relative_path.as_ref().and_then(|p| {
+                let parts: Vec<&str> = p.split('/').collect();
+                if parts.len() >= 2 {
+                    let folder = parts[..parts.len() - 1].join("/");
+                    if audiobook_folders.contains(&folder) {
+                        return Some((folder, idx));
+                    }
+                }
+                None
+            })
+        })
+        .collect();
 
     let mut folder_groups: HashMap<String, Vec<usize>> = HashMap::new();
 
@@ -780,7 +1069,13 @@ fn detect_audiobook_groups(
                 groups.push(AudiobookGroup {
                     title,
                     author: None,
+                    series: None,
+                    series_sequence: None,
+                    narrator: None,
+                    year: None,
                     file_indices: vec![idx],
+                    cover_index: None,
+                    probe_data: None,
                 });
             }
             continue;
@@ -788,16 +1083,39 @@ fn detect_audiobook_groups(
 
         let segments: Vec<&str> = folder_path.split('/').collect();
 
-        let (author, title) = match segments.len() {
-            0 => (None, folder_path.clone()),
-            1 => (None, segments[0].to_string()),
-            _ => (Some(segments[0].to_string()), segments[1..].join(" - ")),
+        // Parse ABS-style folder structure:
+        //   Author/Series/Title  (3+ segments)
+        //   Author/Title         (2 segments)
+        //   Title                (1 segment)
+        let (author, raw_title, series) = match segments.len() {
+            0 => (None, folder_path.clone(), None),
+            1 => (None, segments[0].to_string(), None),
+            2 => (Some(segments[0].to_string()), segments[1].to_string(), None),
+            _ => {
+                // 3+ segments: Author/Series/Title (last segment is title)
+                (
+                    Some(segments[0].to_string()),
+                    segments[segments.len() - 1].to_string(),
+                    Some(segments[1..segments.len() - 1].join(" / ")),
+                )
+            }
         };
+
+        // Parse the title folder for year, sequence, narrator
+        let (title, parsed_year, parsed_sequence, parsed_narrator) = parse_title_folder(&raw_title);
+
+        let cover_index = cover_images.get(folder_path).copied();
 
         groups.push(AudiobookGroup {
             title,
             author,
+            series: series.or(None),
+            series_sequence: parsed_sequence,
+            narrator: parsed_narrator,
+            year: parsed_year,
             file_indices: indices.clone(),
+            cover_index,
+            probe_data: None,
         });
     }
 

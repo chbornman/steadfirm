@@ -69,3 +69,27 @@ pub const CLASSIFY_MAX_TOKENS: u64 = 16384;
 /// Maximum number of files to send to the LLM in a single batch.
 /// Larger batches are chunked.
 pub const CLASSIFY_BATCH_SIZE: usize = 50;
+
+// ─── Audiobook detection ─────────────────────────────────────────────
+
+/// Minimum total duration (seconds) for a set of audio files to be
+/// considered an audiobook rather than a music album. ~45 minutes.
+pub const AUDIOBOOK_MIN_DURATION_SECS: f64 = 2700.0;
+
+/// Audio file extensions that might be audiobook chapters.
+pub const AUDIOBOOK_AUDIO_EXTENSIONS: &[&str] = &[
+    "mp3", "m4a", "m4b", "flac", "ogg", "opus", "aac", "wma", "wav",
+];
+
+/// Regex-style keywords in filenames/paths that suggest audiobook content.
+pub const AUDIOBOOK_FILENAME_KEYWORDS: &[&str] = &[
+    "chapter",
+    "chap",
+    "ch",
+    "part",
+    "section",
+    "narrated",
+    "unabridged",
+    "abridged",
+    "audiobook",
+];

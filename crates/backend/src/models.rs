@@ -180,6 +180,20 @@ pub struct ListeningSession {
     pub updated_at: Option<String>,
 }
 
+// --- Reading (from Kavita) ---
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Series {
+    pub id: String,
+    pub name: String,
+    pub library_id: i64,
+    pub cover_url: String,
+    pub pages: u32,
+    pub format: String,
+    pub pages_read: u32,
+}
+
 // --- Files (Steadfirm internal) ---
 
 #[derive(Debug, Serialize)]

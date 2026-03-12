@@ -10,6 +10,7 @@
 | **Jellyfin** | [jellyfin.org/docs/general/server/api](https://jellyfin.org/docs/general/server/api/) | [api.jellyfin.org (OpenAPI)](https://api.jellyfin.org/) | [jellyfin/jellyfin](https://github.com/jellyfin/jellyfin) |
 | **Paperless-ngx** | [docs.paperless-ngx.com/api](https://docs.paperless-ngx.com/api/) | [Swagger (your-instance/api/schema/swagger-ui)](https://docs.paperless-ngx.com/api/#the-api) | [paperless-ngx/paperless-ngx](https://github.com/paperless-ngx/paperless-ngx) |
 | **Audiobookshelf** | [api.audiobookshelf.org](https://api.audiobookshelf.org/) | N/A (REST docs only, OpenAPI planned) | [advplyr/audiobookshelf](https://github.com/advplyr/audiobookshelf) |
+| **Kavita** | [wiki.kavitareader.com/api](https://wiki.kavitareader.com/guides/api/) | [Swagger (your-instance/swagger)](https://wiki.kavitareader.com/guides/api/) | [Kareadita/Kavita](https://github.com/Kareadita/Kavita) |
 
 ### Our Stack
 
@@ -62,13 +63,13 @@ Steadfirm is a unified personal cloud. Users interact with a single app (web or 
 │  └──────────────────────────────────┘    │              │
 └──────────────────────────────────────────┼──────────────┘
                                            │
-          ┌──────────┬──────────┬──────────┼──────────┐
-          ▼          ▼          ▼          ▼          ▼
-      ┌────────┐ ┌────────┐ ┌──────────┐ ┌────────┐ ┌────────────┐
-      │ Immich │ │Jellyfin│ │Paperless │ │ Audio- │ │ Local Disk │
-      │        │ │        │ │  -ngx    │ │ book-  │ │  (files)   │
-      │ :2283  │ │ :8096  │ │  :8000   │ │ shelf  │ │            │
-      └────────┘ └────────┘ └──────────┘ │ :13378 │ └────────────┘
+          ┌──────────┬──────────┬──────────┼──────────┬──────────┐
+          ▼          ▼          ▼          ▼          ▼          ▼
+      ┌────────┐ ┌────────┐ ┌──────────┐ ┌────────┐ ┌────────┐ ┌────────────┐
+      │ Immich │ │Jellyfin│ │Paperless │ │ Audio- │ │ Kavita │ │ Local Disk │
+      │        │ │        │ │  -ngx    │ │ book-  │ │        │ │  (files)   │
+      │ :2283  │ │ :8096  │ │  :8000   │ │ shelf  │ │ :5000  │ │            │
+      └────────┘ └────────┘ └──────────┘ │ :13378 │ └────────┘ └────────────┘
                                          └────────┘
 ```
 
@@ -108,7 +109,7 @@ BetterAuth manages its own tables (`user`, `session`, `account`, `verification`)
 CREATE TABLE service_connections (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         TEXT NOT NULL,  -- references BetterAuth user.id
-    service         TEXT NOT NULL,  -- 'immich', 'jellyfin', 'paperless', 'audiobookshelf'
+    service         TEXT NOT NULL,  -- 'immich', 'jellyfin', 'paperless', 'audiobookshelf', 'kavita'
     service_user_id TEXT NOT NULL,  -- user ID within the service
     api_key         TEXT NOT NULL,  -- encrypted service API key/token
     active          BOOLEAN NOT NULL DEFAULT true,
@@ -145,6 +146,7 @@ Backend:
    - Jellyfin: `POST /Users/New` → returns user ID, then generate API key
    - Paperless: `POST /api/users/` → returns user ID + token
    - Audiobookshelf: `POST /api/users` → returns user ID + token
+   - Kavita: `POST /api/Account/invite` → confirm invite → login as user → `POST /api/Plugin/authenticate` to create persistent API key
 3. Stores all credentials in `service_connections` (encrypted)
 4. Returns success
 
@@ -249,6 +251,25 @@ POST /api/v1/audiobooks/:id/bookmarks → create bookmark
 - `POST /api/me/item/:itemId/bookmark` — create bookmark
 - `POST /api/users` — create user (admin)
 
+### Reading (proxied to Kavita)
+
+```
+GET  /api/v1/reading                  → list user's series (paginated)
+GET  /api/v1/reading/:id              → get series details
+GET  /api/v1/reading/:id/cover        → proxy cover image
+```
+
+**Kavita API endpoints used:**
+- `POST /api/Series/v2` — list/filter series with pagination (response header `Pagination` contains total)
+- `GET /api/Series/:seriesId` — series details
+- `GET /api/Image/series-cover?seriesId=:id` — cover image
+- `POST /api/Account/invite` — create user (admin)
+- `POST /api/Account/confirm-email` — confirm invited user
+- `POST /api/Account/login` — login (returns JWT)
+- `POST /api/Plugin/authenticate` — create persistent API key
+- `GET /api/Library/libraries` — list libraries
+- `POST /api/Library/scan-all` — trigger library scan (after file upload)
+
 ### Files (Steadfirm internal)
 
 ```
@@ -298,6 +319,7 @@ Backend then routes each file to the confirmed service's upload API:
 - Media → place in user's Jellyfin library folder + trigger library scan
 - Documents → `POST /api/documents/post_document/` (Paperless)
 - Audiobooks → copy to user's Audiobookshelf library folder + trigger scan
+- Reading → copy to user's Kavita library folder + trigger `POST /api/Library/scan-all`
 - Files → store locally, record in `files` table
 
 ---
@@ -328,14 +350,14 @@ packages/
 
 web/               Browser app (online-only)
   src/
-    pages/           Photos, Media, Documents, Audiobooks, Files
+    pages/           Photos, Media, Documents, Audiobooks, Reading, Files
     hooks/           useApi() — HTTP fetch to Steadfirm backend
     lib/
       api.ts         typed API client (fetch + session token)
 
 crates/app/src/    Tauri app (offline-first)
   src/
-    pages/           Photos, Media, Documents, Audiobooks, Files
+    pages/           Photos, Media, Documents, Audiobooks, Reading, Files
     hooks/           useData() — Tauri commands to local SQLite
     lib/
       tauri.ts       typed Tauri command bindings
@@ -439,7 +461,10 @@ Heuristic classification:
     ├─ Audio MIME + ID3 tags + < 20min              → Media/Music (confidence: 0.85)
     ├─ Audio MIME + long duration + author metadata  → Audiobooks (confidence: 0.85)
     ├─ M4B extension                                → Audiobooks (confidence: 0.95)
-    ├─ PDF/DOCX MIME                                → Documents (confidence: 0.90)
+    ├─ EPUB/MOBI/AZW/AZW3/FB2 MIME or extension    → Reading (confidence: 0.95)
+    ├─ CBZ/CBR/CB7/CBT/CBA (comic archives)        → Reading (confidence: 0.95)
+    ├─ PDF MIME                                     → Documents (confidence: 0.50) — LLM decides
+    ├─ DOCX MIME                                    → Documents (confidence: 0.90)
     ├─ CSV/OFX/QFX with financial headers           → Files (confidence: 0.70)
     └─ Anything else                                → Files (confidence: 1.0)
     │
@@ -480,6 +505,7 @@ For movies/shows, the drop zone does a TMDb lookup by filename to get the correc
 | jellyfin | jellyfin/jellyfin:10.11.6 | 8096 | |
 | paperless | ghcr.io/paperless-ngx/paperless-ngx:2.20.10 | 8000 | |
 | audiobookshelf | ghcr.io/advplyr/audiobookshelf:2.32.1 | 13378 | |
+| kavita | ghcr.io/kareadita/kavita:latest | 5000 | Uses SQLite internally |
 | caddy | caddy:2.11.2-alpine | 80, 443 | |
 
 ### Storage layout
@@ -495,9 +521,11 @@ For movies/shows, the drop zone does a TMDb lookup by filename to get the correc
       Music/
   audiobooks/             Audiobookshelf per-user libraries
     {user_id}/
+  reading/                Kavita per-user libraries
+    {user_id}/
 ```
 
-Immich and Paperless manage their own storage volumes internally. Jellyfin and Audiobookshelf need host-mounted directories for per-user library isolation.
+Immich and Paperless manage their own storage volumes internally. Jellyfin, Audiobookshelf, and Kavita need host-mounted directories for per-user library isolation. Kavita uses SQLite for its own database (no Postgres dependency).
 
 ### External access
 
@@ -521,6 +549,7 @@ How the backend authenticates with each underlying service on behalf of a user:
 | Jellyfin | `Authorization: MediaBrowser Token="{key}"` + UserId param | Yes — per-user API token | Admin creates user → generate token for user |
 | Paperless | `Authorization: Token {token}` | Yes — per-user auth token | Admin creates user → user gets token |
 | Audiobookshelf | `Authorization: Bearer {token}` | Yes — per-user JWT/token | Admin creates user → login as user → store token |
+| Kavita | `x-api-key: {key}` | Yes — per-user persistent API key | Admin invites user → confirm → login → create API key via Plugin endpoint |
 
 All credentials are stored encrypted in the `service_connections` table. The backend is the only component that ever touches these credentials.
 
@@ -529,11 +558,11 @@ All credentials are stored encrypted in the `service_connections` table. The bac
 ## 9. Milestones (v1 POC)
 
 ### M1: Infrastructure + Auth
-- [ ] Docker Compose runs all services (including BetterAuth sidecar)
+- [ ] Docker Compose runs all services (including BetterAuth sidecar, Kavita)
 - [ ] Caddy routes traffic (including /api/auth/* to BetterAuth)
 - [ ] Axum backend starts with health endpoint
 - [ ] BetterAuth session validation middleware works (direct Postgres read)
-- [ ] User provisioning creates accounts in all services
+- [ ] User provisioning creates accounts in all 5 services (Immich, Jellyfin, Paperless, Audiobookshelf, Kavita)
 - [ ] `service_connections` table stores credentials
 
 ### M2: Backend API Proxy
@@ -541,6 +570,7 @@ All credentials are stored encrypted in the `service_connections` table. The bac
 - [ ] Media proxy (movies, shows, music, streaming)
 - [ ] Documents proxy (list, thumbnail, preview, download)
 - [ ] Audiobooks proxy (list, play, progress, bookmarks)
+- [ ] Reading proxy (list series, detail, cover image)
 - [ ] Files CRUD (list, download, delete)
 
 ### M3: Drop Zone
@@ -556,8 +586,9 @@ All credentials are stored encrypted in the `service_connections` table. The bac
 - [ ] Media tab with movies/shows/music + streaming
 - [ ] Documents tab with grid + PDF viewer
 - [ ] Audiobooks tab with player + progress + chapters
+- [ ] Reading tab with series library + detail view
 - [ ] Files tab with list + download
-- [ ] Drop zone UI with classification suggestions
+- [ ] Drop zone UI with AI-powered streaming classification
 
 ### M5: Tauri App (offline-first)
 - [ ] Tauri project scaffolded, points at app-specific frontend

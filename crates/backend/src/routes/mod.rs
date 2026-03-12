@@ -11,6 +11,7 @@ mod files;
 mod hooks;
 mod media;
 mod photos;
+mod reading;
 mod users;
 
 pub fn api_router() -> Router<AppState> {
@@ -24,5 +25,6 @@ pub fn api_router() -> Router<AppState> {
         .nest("/media", media::router())
         .nest("/documents", documents::router())
         .nest("/audiobooks", audiobooks::router())
+        .nest("/reading", reading::router())
         .nest("/files", files::router())
 }

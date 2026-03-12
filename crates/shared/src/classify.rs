@@ -126,8 +126,76 @@ pub struct AudiobookGroup {
     /// Inferred author name (e.g. `Brandon Sanderson`).
     pub author: Option<String>,
 
+    /// Inferred series name (e.g. `Mistborn`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub series: Option<String>,
+
+    /// Series sequence/volume number (e.g. `1`, `2.5`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub series_sequence: Option<String>,
+
+    /// Narrator name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub narrator: Option<String>,
+
+    /// Publish year (e.g. `2006`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub year: Option<String>,
+
     /// Indices into the request's `files` array that belong to this book.
     pub file_indices: Vec<usize>,
+
+    /// Index of the cover image file, if one was detected in this group.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cover_index: Option<usize>,
+
+    /// Probe data extracted from audio files via ffprobe (populated by
+    /// the `/classify/probe` endpoint, not during initial classification).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub probe_data: Option<AudiobookProbeData>,
+}
+
+/// Metadata extracted from audio file ID3/ffprobe tags.
+/// Aggregated across all files in an audiobook group.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudiobookProbeData {
+    /// Album tag (maps to audiobook title).
+    pub album: Option<String>,
+    /// Artist/album-artist tag (maps to author).
+    pub artist: Option<String>,
+    /// Composer tag (maps to narrator in ABS convention).
+    pub composer: Option<String>,
+    /// Genre tag.
+    pub genre: Option<String>,
+    /// Year/date tag.
+    pub year: Option<String>,
+    /// Series tag (from ID3 MVNM/series tag).
+    pub series: Option<String>,
+    /// Series part (from ID3 MVIN/series-part tag).
+    pub series_part: Option<String>,
+    /// Total duration in seconds across all files.
+    pub total_duration_secs: f64,
+    /// Per-file probe results, ordered by track number.
+    pub tracks: Vec<AudioFileProbe>,
+}
+
+/// Probe result for a single audio file.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioFileProbe {
+    /// Index in the original files array.
+    pub file_index: usize,
+    /// Track number parsed from ID3 or filename.
+    pub track_number: Option<u32>,
+    /// Disc number from ID3.
+    pub disc_number: Option<u32>,
+    /// Duration of this file in seconds.
+    pub duration_secs: f64,
+    /// Title tag from ID3.
+    pub title: Option<String>,
+    /// Whether this file has an embedded cover image.
+    pub has_embedded_cover: bool,
 }
 
 // ─── LLM extraction target ──────────────────────────────────────────

@@ -11,7 +11,9 @@ use crate::services::*;
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/", post(upload_file))
+    Router::new()
+        .route("/", post(upload_file))
+        .route("/audiobook", post(upload_audiobook))
 }
 
 async fn upload_file(
@@ -288,5 +290,135 @@ async fn upload_file(
         "status": "routed",
         "service": service,
         "filename": filename,
+    })))
+}
+
+/// POST /api/v1/upload/audiobook
+///
+/// Upload a complete audiobook (all files for one book) to Audiobookshelf
+/// via its upload API. Accepts multipart form with metadata fields and
+/// all audio/cover files for the book.
+///
+/// Form fields:
+///   - `title` (required): Book title
+///   - `author` (optional): Author name
+///   - `series` (optional): Series name
+///   - Files: numbered keys (0, 1, 2...) with audio/cover files
+async fn upload_audiobook(
+    State(state): State<AppState>,
+    user: AuthUser,
+    mut multipart: Multipart,
+) -> Result<Json<Value>, AppError> {
+    let cred = user
+        .credentials
+        .audiobookshelf
+        .ok_or(AppError::ServiceUnavailable(
+            "audiobooks not provisioned".into(),
+        ))?;
+
+    let mut title = String::new();
+    let mut author: Option<String> = None;
+    let mut series: Option<String> = None;
+    let mut files: Vec<(String, Vec<u8>, String)> = Vec::new();
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("multipart error: {e}")))?
+    {
+        let field_name = field.name().unwrap_or("").to_string();
+        match field_name.as_str() {
+            "title" => {
+                title = field
+                    .text()
+                    .await
+                    .map_err(|e| AppError::BadRequest(format!("read error: {e}")))?;
+            }
+            "author" => {
+                let text = field
+                    .text()
+                    .await
+                    .map_err(|e| AppError::BadRequest(format!("read error: {e}")))?;
+                if !text.is_empty() {
+                    author = Some(text);
+                }
+            }
+            "series" => {
+                let text = field
+                    .text()
+                    .await
+                    .map_err(|e| AppError::BadRequest(format!("read error: {e}")))?;
+                if !text.is_empty() {
+                    series = Some(text);
+                }
+            }
+            _ => {
+                // File fields — key is an index or any string
+                let filename = field.file_name().unwrap_or("audio.mp3").to_string();
+                let data = field
+                    .bytes()
+                    .await
+                    .map_err(|e| AppError::BadRequest(format!("read error: {e}")))?;
+                let mime = mime_guess::from_path(&filename)
+                    .first_or_octet_stream()
+                    .to_string();
+                files.push((filename, data.to_vec(), mime));
+            }
+        }
+    }
+
+    if title.is_empty() {
+        return Err(AppError::BadRequest("title is required".into()));
+    }
+    if files.is_empty() {
+        return Err(AppError::BadRequest("at least one file is required".into()));
+    }
+
+    let file_count = files.len();
+    let total_bytes: usize = files.iter().map(|(_, data, _)| data.len()).sum();
+
+    tracing::info!(
+        user_id = %user.id,
+        title = %title,
+        author = ?author,
+        series = ?series,
+        file_count,
+        total_bytes,
+        "audiobook upload started"
+    );
+
+    let abs_client =
+        AudiobookshelfClient::new(&state.config.audiobookshelf_url, state.http.clone());
+
+    // Get the book library ID and folder ID using admin token
+    let (library_id, folder_id) = abs_client
+        .get_book_library_info(&state.config.audiobookshelf_admin_token)
+        .await?;
+
+    // Upload via the ABS API using the user's token
+    abs_client
+        .upload_book(
+            &cred.api_key,
+            &library_id,
+            &folder_id,
+            &title,
+            author.as_deref(),
+            series.as_deref(),
+            files,
+        )
+        .await?;
+
+    tracing::info!(
+        user_id = %user.id,
+        title = %title,
+        file_count,
+        "audiobook upload complete"
+    );
+
+    Ok(Json(json!({
+        "status": "uploaded",
+        "service": "audiobooks",
+        "title": title,
+        "fileCount": file_count,
     })))
 }

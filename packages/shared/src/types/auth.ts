@@ -22,6 +22,7 @@ export interface UserProfile {
     media: boolean;
     documents: boolean;
     audiobooks: boolean;
+    reading: boolean;
     files: boolean;
   };
 }
