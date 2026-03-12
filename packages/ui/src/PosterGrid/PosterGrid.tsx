@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { gridContainer, gridItem as gridItemVariant, overlay } from '@steadfirm/theme';
+import { CoverImage } from '../CoverImage';
 
 export interface PosterGridItem {
   id: string;
@@ -53,11 +54,10 @@ export function PosterGrid({
               background: 'var(--ant-color-bg-container)',
             }}
           >
-            <img
+            <CoverImage
               src={item.imageUrl}
               alt={item.title}
-              loading="lazy"
-              className="poster-image"
+              iconSize={36}
               style={{
                 width: '100%',
                 height: '100%',

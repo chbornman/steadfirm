@@ -10,6 +10,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { cssVar, ease } from '@steadfirm/theme';
 import { formatDuration } from '@steadfirm/shared';
+import { CoverImage } from '../CoverImage';
 
 const { useBreakpoint } = Grid;
 
@@ -76,9 +77,10 @@ export function AudiobookPlayerBar({ state, onAction }: AudiobookPlayerBarProps)
             flex: isMobile ? 1 : '0 0 200px',
           }}
         >
-          <img
+          <CoverImage
             src={book.coverUrl}
             alt={book.title}
+            iconSize={20}
             style={{
               width: 44,
               height: 44,

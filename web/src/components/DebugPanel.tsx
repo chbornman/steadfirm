@@ -11,20 +11,78 @@ import {
   Copy,
   Check,
   X,
+  CopySimple,
 } from '@phosphor-icons/react';
-import { typography, colors, spacing } from '@steadfirm/theme';
+import { typography, colors, spacing, radii } from '@steadfirm/theme';
 import { useDebugStore, DEBUG_PANEL_WIDTH } from '@/stores/debug';
 import type { DebugLogPair } from '@/stores/debug';
 
 const { Text, Paragraph } = Typography;
 
+/** Format a single pair into a copyable markdown string. */
+function formatPairForCopy(pair: DebugLogPair): string {
+  const parts: string[] = [];
+
+  if (pair.meta) {
+    parts.push(
+      `# ${pair.meta.provider} / ${pair.meta.model} (${pair.meta.durationMs}ms, ${pair.meta.fileCount} files)`,
+    );
+    parts.push('');
+  }
+
+  if (pair.prompts) {
+    parts.push('## System Prompt\n');
+    parts.push(pair.prompts.system);
+    parts.push('\n## User Prompt\n');
+    parts.push(pair.prompts.user);
+    if (pair.prompts.rawResponse) {
+      parts.push('\n## Raw Response\n');
+      parts.push(pair.prompts.rawResponse);
+    }
+    parts.push('');
+  }
+
+  parts.push('## Request Body\n');
+  parts.push(pair.request.data);
+
+  if (pair.response) {
+    const label =
+      pair.response.type === 'error' ? '## Error' : '## Response Body';
+    parts.push(`\n${label}\n`);
+    parts.push(pair.response.data);
+  }
+
+  return parts.join('\n');
+}
+
+/** Write text to clipboard with fallback for non-HTTPS contexts. */
+function writeClipboard(text: string): Promise<void> | undefined {
+  const clipboard = navigator.clipboard as Clipboard | undefined;
+  if (clipboard) {
+    return clipboard.writeText(text);
+  }
+  return undefined;
+}
+
 /** Floating debug toggle button + side panel. Only shown in dev mode. */
 export function DebugPanel() {
   const { token } = theme.useToken();
+  const { message } = App.useApp();
   const visible = useDebugStore((s) => s.visible);
   const pairs = useDebugStore((s) => s.pairs);
   const toggleVisible = useDebugStore((s) => s.toggleVisible);
   const clearEntries = useDebugStore((s) => s.clearEntries);
+
+  const handleCopyAll = useCallback(() => {
+    if (pairs.length === 0) return;
+    const allText = [...pairs]
+      .reverse()
+      .map((p, i) => `---\n## Entry ${i + 1}\n\n${formatPairForCopy(p)}`)
+      .join('\n\n');
+    void writeClipboard(allText)?.then(() => {
+      void message.success('All entries copied');
+    });
+  }, [pairs, message]);
 
   if (import.meta.env.PROD) return null;
 
@@ -75,34 +133,56 @@ export function DebugPanel() {
         {/* Header */}
         <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: spacing.sm,
-            padding: '12px 16px',
-            borderBottom: '1px solid var(--ant-color-border)',
+            padding: `${spacing.sm}px ${spacing.md}px`,
+            borderBottom: `1px solid ${token.colorBorderSecondary}`,
             flexShrink: 0,
           }}
         >
-          <Bug size={18} />
-          <Text strong>AI Debug Log</Text>
-          <Tag color="purple" style={{ marginLeft: 4, marginRight: 'auto' }}>
-            {pairs.length} {pairs.length === 1 ? 'entry' : 'entries'}
-          </Tag>
-          <Button
-            size="small"
-            danger
-            icon={<Trash size={14} />}
-            onClick={clearEntries}
-            disabled={pairs.length === 0}
+          {/* Top row: title + close */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: spacing.sm,
+              marginBottom: spacing.sm,
+            }}
           >
-            Clear
-          </Button>
-          <Button
-            type="text"
-            size="small"
-            icon={<X size={16} />}
-            onClick={toggleVisible}
-          />
+            <Bug size={18} weight="bold" color={colors.accent} />
+            <Text strong style={{ fontSize: 14 }}>AI Debug Log</Text>
+            <Tag
+              color="purple"
+              style={{ marginLeft: spacing.xs, marginRight: 'auto', fontSize: 11 }}
+            >
+              {pairs.length} {pairs.length === 1 ? 'entry' : 'entries'}
+            </Tag>
+            <Button
+              type="text"
+              size="small"
+              icon={<X size={16} />}
+              onClick={toggleVisible}
+            />
+          </div>
+
+          {/* Action row: Copy All (prominent) + Clear */}
+          <div style={{ display: 'flex', gap: spacing.sm }}>
+            <Button
+              type="primary"
+              icon={<CopySimple size={16} weight="bold" />}
+              onClick={handleCopyAll}
+              disabled={pairs.length === 0}
+              style={{ flex: 1 }}
+            >
+              Copy All Entries
+            </Button>
+            <Button
+              danger
+              icon={<Trash size={14} />}
+              onClick={clearEntries}
+              disabled={pairs.length === 0}
+            >
+              Clear
+            </Button>
+          </div>
         </div>
 
         {/* Scrollable body */}
@@ -139,57 +219,23 @@ function LogPairEntry({ pair }: { pair: DebugLogPair }) {
     toggleCollapse(pair.id);
   }, [pair.id, toggleCollapse]);
 
-  const handleCopyAll = useCallback(
+  const handleCopyEntry = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      const parts: string[] = [];
-
-      if (pair.meta) {
-        parts.push(
-          `# ${pair.meta.provider} / ${pair.meta.model} (${pair.meta.durationMs}ms, ${pair.meta.fileCount} files)`,
-        );
-        parts.push('');
-      }
-
-      if (pair.prompts) {
-        parts.push('## System Prompt\n');
-        parts.push(pair.prompts.system);
-        parts.push('\n## User Prompt\n');
-        parts.push(pair.prompts.user);
-        if (pair.prompts.rawResponse) {
-          parts.push('\n## Raw Response\n');
-          parts.push(pair.prompts.rawResponse);
-        }
-        parts.push('');
-      }
-
-      parts.push('## Request Body\n');
-      parts.push(pair.request.data);
-
-      if (pair.response) {
-        const label =
-          pair.response.type === 'error' ? '## Error' : '## Response Body';
-        parts.push(`\n${label}\n`);
-        parts.push(pair.response.data);
-      }
-
-      // navigator.clipboard is undefined on non-HTTPS (LAN IP)
-      const clipboard = navigator.clipboard as Clipboard | undefined;
-      if (clipboard) {
-        void clipboard.writeText(parts.join('\n')).then(() => {
-          void message.success('Copied to clipboard');
-        });
-      }
+      void writeClipboard(formatPairForCopy(pair))?.then(() => {
+        void message.success('Entry copied');
+      });
     },
     [pair, message],
   );
 
   const isError = pair.response?.type === 'error';
+  const isPending = !pair.response;
 
   return (
     <div
       style={{
-        borderBottom: '1px solid var(--ant-color-border)',
+        borderBottom: `1px solid var(--ant-color-border)`,
       }}
     >
       {/* Header row */}
@@ -198,10 +244,19 @@ function LogPairEntry({ pair }: { pair: DebugLogPair }) {
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
-          padding: '8px 12px',
+          gap: spacing.sm,
+          padding: `${spacing.sm}px ${spacing.md - 4}px`,
           cursor: 'pointer',
-          background: isError ? 'rgba(239, 68, 68, 0.06)' : 'transparent',
+          background: isError
+            ? 'rgba(239, 68, 68, 0.06)'
+            : 'transparent',
+          transition: 'background 0.15s ease',
+        }}
+        onMouseEnter={(e) => {
+          if (!isError) e.currentTarget.style.background = 'var(--ant-color-fill-quaternary)';
+        }}
+        onMouseLeave={(e) => {
+          if (!isError) e.currentTarget.style.background = 'transparent';
         }}
       >
         {pair.collapsed ? (
@@ -210,56 +265,49 @@ function LogPairEntry({ pair }: { pair: DebugLogPair }) {
           <CaretDown size={14} weight="bold" />
         )}
 
+        {/* Badge + model on one line */}
         <Tag
           color={isError ? 'error' : 'processing'}
-          style={{ fontSize: 10 }}
+          style={{ fontSize: 10, margin: 0 }}
         >
           {pair.request.badge ?? 'classify'}
         </Tag>
 
         {pair.meta && (
-          <>
-            <Tag
-              icon={<Robot size={10} style={{ marginRight: 2 }} />}
-              color="purple"
-              style={{ fontSize: 10 }}
-            >
-              {pair.meta.model}
-            </Tag>
-            <Tag
-              icon={<Clock size={10} style={{ marginRight: 2 }} />}
-              color="default"
-              style={{ fontSize: 10 }}
-            >
-              {pair.meta.durationMs}ms
-            </Tag>
-          </>
+          <Text type="secondary" style={{ fontSize: 10 }}>
+            <Robot size={10} style={{ marginRight: 2, verticalAlign: 'middle' }} />
+            {pair.meta.model}
+            <span style={{ margin: '0 4px', opacity: 0.4 }}>|</span>
+            <Clock size={10} style={{ marginRight: 2, verticalAlign: 'middle' }} />
+            {pair.meta.durationMs}ms
+          </Text>
         )}
 
-        {!pair.response && <Tag color="warning">pending...</Tag>}
+        {isPending && <Tag color="warning" style={{ margin: 0 }}>pending...</Tag>}
 
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
-          <Tooltip title="Copy all">
-            <Button
-              type="text"
-              size="small"
-              icon={<Copy size={13} />}
-              onClick={handleCopyAll}
-              style={{ width: 24, height: 24, minWidth: 24 }}
-            />
-          </Tooltip>
+        {/* Right side: timestamp + copy */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: spacing.xs }}>
           <Text type="secondary" style={{ fontSize: 10 }}>
             {formatTime(pair.request.timestamp)}
           </Text>
+          <Tooltip title="Copy entry">
+            <Button
+              size="small"
+              icon={<Copy size={14} />}
+              onClick={handleCopyEntry}
+              style={{ minWidth: 28, width: 28, height: 28 }}
+            />
+          </Tooltip>
         </div>
       </div>
 
       {/* Expanded content */}
       {!pair.collapsed && (
-        <div style={{ padding: '0 12px 12px' }}>
+        <div style={{ padding: `0 ${spacing.md}px ${spacing.md}px` }}>
           {/* Prompts section */}
           {pair.prompts && (
-            <div style={{ marginBottom: 10 }}>
+            <div style={{ marginBottom: spacing.sm }}>
+              <SectionLabel label="Prompts" />
               <PromptSection
                 label="System Prompt"
                 content={pair.prompts.system}
@@ -278,52 +326,45 @@ function LogPairEntry({ pair }: { pair: DebugLogPair }) {
           )}
 
           {/* Request / Response */}
-          <div style={{ marginBottom: 8 }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                marginBottom: 4,
-              }}
-            >
-              <ArrowRight size={12} color={colors.info} />
-              <Text strong style={{ fontSize: 11, color: colors.info }}>
-                Request Body
-              </Text>
-            </div>
+          <SectionLabel label="Request" color={colors.info} />
+          <div style={{ marginBottom: spacing.sm }}>
             <CodeBlock content={pair.request.data} />
           </div>
 
           {pair.response && (
-            <div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  marginBottom: 4,
-                }}
-              >
-                <ArrowRight
-                  size={12}
-                  color={isError ? colors.error : colors.success}
-                />
-                <Text
-                  strong
-                  style={{
-                    fontSize: 11,
-                    color: isError ? colors.error : colors.success,
-                  }}
-                >
-                  {isError ? 'Error' : 'Response Body'}
-                </Text>
-              </div>
+            <>
+              <SectionLabel
+                label={isError ? 'Error' : 'Response'}
+                color={isError ? colors.error : colors.success}
+              />
               <CodeBlock content={pair.response.data} />
-            </div>
+            </>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Small colored section label used in expanded content. */
+function SectionLabel({ label, color }: { label: string; color?: string }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: spacing.xs,
+        marginBottom: spacing.xs,
+        marginTop: spacing.xs,
+      }}
+    >
+      <ArrowRight size={12} color={color ?? colors.accent} />
+      <Text
+        strong
+        style={{ fontSize: 11, color: color ?? colors.accent, textTransform: 'uppercase', letterSpacing: 0.5 }}
+      >
+        {label}
+      </Text>
     </div>
   );
 }
@@ -336,11 +377,10 @@ function PromptSection({
   content: string;
 }) {
   return (
-    <div style={{ marginBottom: 8 }}>
+    <div style={{ marginBottom: spacing.sm }}>
       <Text
-        strong
         type="secondary"
-        style={{ fontSize: 11, display: 'block', marginBottom: 4 }}
+        style={{ fontSize: 10, display: 'block', marginBottom: 2, fontWeight: 600 }}
       >
         {label}
       </Text>
@@ -359,14 +399,10 @@ function CodeBlock({
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
-    // navigator.clipboard is undefined on non-HTTPS (LAN IP)
-    const clipboard = navigator.clipboard as Clipboard | undefined;
-    if (clipboard) {
-      void clipboard.writeText(content).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      });
-    }
+    void writeClipboard(content)?.then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
   }, [content]);
 
   // Try to pretty-print JSON
@@ -387,10 +423,10 @@ function CodeBlock({
     <div
       style={{
         position: 'relative',
-        background: 'var(--ant-color-bg-container)',
+        background: 'var(--ant-color-fill-quaternary)',
         border: '1px solid var(--ant-color-border)',
-        borderRadius: 6,
-        padding: '8px 12px',
+        borderRadius: radii.md,
+        padding: `${spacing.sm}px ${spacing.sm + 4}px`,
         maxHeight: 300,
         overflow: 'auto',
       }}

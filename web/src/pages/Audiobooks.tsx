@@ -1,9 +1,10 @@
 import { useEffect, useMemo } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
 import { Typography, Spin, Grid } from 'antd';
 import { Headphones } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PosterGrid } from '@steadfirm/ui';
+import { PosterGrid, CoverImage } from '@steadfirm/ui';
 import type { PosterGridItem } from '@steadfirm/ui';
 import { gridItem, overlay, cssVar } from '@steadfirm/theme';
 import type { AudiobookListResponse, Audiobook } from '@steadfirm/shared';
@@ -14,6 +15,7 @@ import { useIntersection } from '@/hooks/useIntersection';
 const { useBreakpoint } = Grid;
 
 export function AudiobooksPage() {
+  const navigate = useNavigate();
   const screens = useBreakpoint();
   const isMobile = !screens.md;
 
@@ -70,7 +72,7 @@ export function AudiobooksPage() {
   );
 
   const handleSelect = (item: PosterGridItem) => {
-    window.location.href = `/audiobooks/${item.id}`;
+    void navigate({ to: '/audiobooks/$bookId', params: { bookId: item.id } });
   };
 
   return (
@@ -159,6 +161,7 @@ export function AudiobooksPage() {
 }
 
 function ContinueCard({ book, isMobile }: { book: Audiobook; isMobile: boolean }) {
+  const navigate = useNavigate();
   const progress = book.progress ?? 0;
 
   return (
@@ -167,7 +170,7 @@ function ContinueCard({ book, isMobile }: { book: Audiobook; isMobile: boolean }
       initial="hidden"
       animate="visible"
       onClick={() => {
-        window.location.href = `/audiobooks/${book.id}`;
+        void navigate({ to: '/audiobooks/$bookId', params: { bookId: book.id } });
       }}
       style={{
         flexShrink: 0,
@@ -184,9 +187,10 @@ function ContinueCard({ book, isMobile }: { book: Audiobook; isMobile: boolean }
           background: 'var(--ant-color-bg-container)',
         }}
       >
-        <img
+        <CoverImage
           src={book.coverUrl}
           alt={book.title}
+          iconSize={32}
           style={{
             width: '100%',
             height: '100%',

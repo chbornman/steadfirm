@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Button, Segmented, Typography, Spin, Progress, Grid } from 'antd';
 import { Play, BookmarkSimple } from '@phosphor-icons/react';
 import { motion } from 'framer-motion';
-import { AudiobookChapters } from '@steadfirm/ui';
+import { AudiobookChapters, CoverImage } from '@steadfirm/ui';
 import { cssVar, slideUp } from '@steadfirm/theme';
 import { formatDuration } from '@steadfirm/shared';
 import { audiobookQueries, startPlayback } from '@/api/audiobooks';
@@ -35,7 +35,7 @@ export function AudiobookDetailPage() {
   }, [book]);
 
   const handlePlay = useCallback(async () => {
-    if (!book) return;
+    if (!book || isStarting) return;
     setIsStarting(true);
     try {
       const session = await startPlayback(book.id);
@@ -46,7 +46,7 @@ export function AudiobookDetailPage() {
     } finally {
       setIsStarting(false);
     }
-  }, [book, selectedSpeed, playerStore]);
+  }, [book, selectedSpeed, playerStore, isStarting]);
 
   const handleChapterSelect = useCallback(
     (index: number) => {
@@ -97,7 +97,7 @@ export function AudiobookDetailPage() {
         }}
       >
         {/* Cover */}
-        <img
+        <CoverImage
           src={book.coverUrl}
           alt={book.title}
           style={{

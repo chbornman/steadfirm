@@ -65,3 +65,6 @@ export type { ReadingReviewPanelProps, ReadingGroupEditable } from './DropZone';
 
 export { Wordmark } from './Wordmark';
 export type { WordmarkProps } from './Wordmark';
+
+export { CoverImage } from './CoverImage';
+export type { CoverImageProps } from './CoverImage';

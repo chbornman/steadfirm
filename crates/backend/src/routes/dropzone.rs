@@ -209,7 +209,19 @@ async fn upload_file(
                 .await
                 .map_err(|e| AppError::Internal(anyhow::anyhow!("write error: {e}")))?;
 
-            // TODO: Trigger ABS library scan.
+            // Trigger Audiobookshelf library scan so it picks up the new file.
+            let abs_client = AudiobookshelfClient::new(
+                &state.config.audiobookshelf_url,
+                state.http.clone(),
+            );
+            if let Ok((library_id, _)) = abs_client
+                .get_book_library_info(&state.config.audiobookshelf_admin_token)
+                .await
+            {
+                let _ = abs_client
+                    .scan_library(&state.config.audiobookshelf_admin_token, &library_id)
+                    .await;
+            }
         }
         "reading" => {
             let cred = user.credentials.kavita.ok_or(AppError::ServiceUnavailable(
