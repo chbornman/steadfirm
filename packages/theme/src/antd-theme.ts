@@ -9,16 +9,16 @@ export const lightTheme: ThemeConfig = {
     colorPrimary: colors.accent,
     colorLink: colors.accent,
     borderRadius: radii.md,
-    colorBgContainer: colors.neutral0,
-    colorBgLayout: colors.neutral50,
+    colorBgContainer: colors.neutral50,
+    colorBgLayout: colors.neutral100,
     colorText: colors.neutral900,
     colorTextSecondary: colors.neutral500,
     colorBorder: colors.neutral200,
   },
   components: {
     Layout: {
-      headerBg: 'rgba(255, 255, 255, 0.8)',
-      bodyBg: colors.neutral50,
+      headerBg: 'rgba(250, 250, 250, 0.8)',
+      bodyBg: colors.neutral100,
     },
     Menu: {
       itemBg: 'transparent',
