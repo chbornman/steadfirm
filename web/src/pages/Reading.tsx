@@ -1,7 +1,7 @@
-import { useEffect, useMemo } from 'react';
-import { useInfiniteQuery } from '@tanstack/react-query';
-import { Typography, Spin, Grid } from 'antd';
-import { BookOpenText } from '@phosphor-icons/react';
+import { useEffect, useMemo, useState } from 'react';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { Typography, Spin, Grid, Segmented } from 'antd';
+import { BookOpenText, Books } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PosterGrid } from '@steadfirm/ui';
 import type { PosterGridItem } from '@steadfirm/ui';
@@ -9,6 +9,8 @@ import { overlay } from '@steadfirm/theme';
 import type { SeriesListResponse } from '@steadfirm/shared';
 import { DEFAULT_PAGE_SIZE } from '@steadfirm/shared';
 import { api } from '@/api/client';
+import { readingQueries } from '@/api/reading';
+import type { ReadingLibrary } from '@/api/reading';
 import { useIntersection } from '@/hooks/useIntersection';
 
 const { useBreakpoint } = Grid;
@@ -16,6 +18,21 @@ const { useBreakpoint } = Grid;
 export function ReadingPage() {
   const screens = useBreakpoint();
   const isMobile = !screens.md;
+
+  const [activeLibrary, setActiveLibrary] = useState<string | undefined>(
+    undefined,
+  );
+
+  // Fetch available libraries (Books, Comics, etc.)
+  const { data: libraries } = useQuery(readingQueries.libraries());
+
+  // Default to the first library once loaded
+  useEffect(() => {
+    const first = libraries?.[0];
+    if (first && activeLibrary === undefined) {
+      setActiveLibrary(first.name);
+    }
+  }, [libraries, activeLibrary]);
 
   const { ref: sentinelRef, isIntersecting } = useIntersection({
     rootMargin: '200% 0px',
@@ -28,18 +45,20 @@ export function ReadingPage() {
     isFetchingNextPage,
     isLoading,
   } = useInfiniteQuery({
-    queryKey: ['reading', 'list'],
+    queryKey: ['reading', 'list', activeLibrary],
     queryFn: ({ pageParam }) =>
       api
         .get('api/v1/reading', {
           searchParams: {
             page: pageParam,
             pageSize: DEFAULT_PAGE_SIZE,
+            ...(activeLibrary != null && { library: activeLibrary }),
           },
         })
         .json<SeriesListResponse>(),
     getNextPageParam: (lastPage) => lastPage.nextPage ?? undefined,
     initialPageParam: 1,
+    enabled: activeLibrary !== undefined,
   });
 
   const allSeries = useMemo(
@@ -73,8 +92,25 @@ export function ReadingPage() {
     window.location.href = `/reading/${item.id}`;
   };
 
+  const showTabs = libraries && libraries.length > 1;
+
   return (
     <div style={{ minHeight: 'calc(100vh - 120px)' }}>
+      {/* Library tabs */}
+      {showTabs && (
+        <div style={{ padding: '16px 16px 0' }}>
+          <Segmented
+            value={activeLibrary}
+            onChange={(val) => setActiveLibrary(val)}
+            options={libraries.map((lib: ReadingLibrary) => ({
+              label: lib.name,
+              value: lib.name,
+            }))}
+            block={isMobile}
+          />
+        </div>
+      )}
+
       {isLoading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 64 }}>
           <Spin size="large" />
@@ -92,7 +128,7 @@ export function ReadingPage() {
         >
           <BookOpenText size={64} weight="duotone" />
           <Typography.Title level={4} type="secondary" style={{ marginTop: 16 }}>
-            No books yet
+            No {activeLibrary?.toLowerCase() ?? 'items'} yet
           </Typography.Title>
           <Typography.Text type="secondary">
             Upload your first ebook or comic to get started
@@ -127,13 +163,19 @@ export function ReadingPage() {
           {/* Full library */}
           <div style={{ padding: '16px 8px' }}>
             <Typography.Title level={5} style={{ margin: '0 0 12px', padding: '0 8px' }}>
-              Library
+              {activeLibrary ?? 'Library'}
             </Typography.Title>
             <PosterGrid
               items={posterItems}
               onSelect={handleSelect}
               aspectRatio="2 / 3"
-              hoverIcon={<BookOpenText size={40} weight="fill" color={overlay.text} />}
+              hoverIcon={
+                activeLibrary === 'Comics' ? (
+                  <Books size={40} weight="fill" color={overlay.text} />
+                ) : (
+                  <BookOpenText size={40} weight="fill" color={overlay.text} />
+                )
+              }
             />
           </div>
         </>

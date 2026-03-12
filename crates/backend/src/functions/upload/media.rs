@@ -31,7 +31,7 @@ pub async fn upload_to_media(
         .ok_or(AppError::ServiceUnavailable("media not provisioned".into()))?;
 
     // TODO: TMDb lookup for proper folder naming.
-    let media_dir = format!("{}/{}/Movies", state.config.media_storage_path, user.id);
+    let media_dir = format!("{}/Movies/{}", state.config.media_storage_path, user.id);
     tokio::fs::create_dir_all(&media_dir)
         .await
         .map_err(|e| AppError::Internal(anyhow::anyhow!("mkdir error: {e}")))?;
@@ -199,7 +199,7 @@ pub async fn upload_media(
                     .map(|s| format!("Season {}", s.trim_start_matches('0')))
                     .unwrap_or_else(|| "Season 01".to_string());
                 format!(
-                    "{}/{}/Shows/{}{}/{}/{}",
+                    "{}/Shows/{}/{}{}/{}/{}",
                     state.config.media_storage_path,
                     user.id,
                     title,
@@ -210,14 +210,14 @@ pub async fn upload_media(
             }
             "movie" => {
                 format!(
-                    "{}/{}/Movies/{}{}/{}",
+                    "{}/Movies/{}/{}{}/{}",
                     state.config.media_storage_path, user.id, title, year_suffix, rel_path,
                 )
             }
             "music" => {
                 let artist_dir = artist.as_deref().unwrap_or("Unknown Artist");
                 format!(
-                    "{}/{}/Music/{}/{}/{}",
+                    "{}/Music/{}/{}/{}/{}",
                     state.config.media_storage_path, user.id, artist_dir, title, rel_path,
                 )
             }

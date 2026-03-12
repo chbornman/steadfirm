@@ -255,6 +255,49 @@ impl JellyfinClient {
         Ok(())
     }
 
+    /// Get all virtual folders (libraries).
+    pub async fn get_virtual_folders(&self, admin_token: &str) -> Result<Value, AppError> {
+        let resp = self
+            .request(reqwest::Method::GET, "/Library/VirtualFolders", admin_token)
+            .send()
+            .await?;
+        let resp = check_response("jellyfin", resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    /// Create a virtual folder (library) with a given collection type and path.
+    /// Collection types: "movies", "tvshows", "music", "mixed", etc.
+    ///
+    /// Per the Jellyfin API, `name`, `collectionType`, `paths`, and
+    /// `refreshLibrary` are all **query parameters**.  The optional request
+    /// body carries only `LibraryOptions`.
+    pub async fn add_virtual_folder(
+        &self,
+        admin_token: &str,
+        name: &str,
+        collection_type: &str,
+        path: &str,
+    ) -> Result<(), AppError> {
+        let resp = self
+            .request(
+                reqwest::Method::POST,
+                "/Library/VirtualFolders",
+                admin_token,
+            )
+            .query(&[
+                ("name", name),
+                ("collectionType", collection_type),
+                ("paths", path),
+                ("refreshLibrary", "false"),
+            ])
+            .json(&serde_json::json!({ "LibraryOptions": {} }))
+            .send()
+            .await?;
+        check_response("jellyfin", resp).await?;
+
+        Ok(())
+    }
+
     /// Trigger a library refresh (admin endpoint).
     pub async fn refresh_library(&self, admin_token: &str) -> Result<(), AppError> {
         let _ = self

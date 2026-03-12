@@ -155,6 +155,37 @@ pub async fn initialize_services(
         }
     }
 
+    // --- Ensure libraries exist (idempotent, runs every startup) ---
+    // Library creation may have failed on first init or been skipped.
+    // These functions check for existing libraries and create missing ones.
+
+    if !config.jellyfin_admin_token.is_empty() {
+        let jf_client = JellyfinClient::new(
+            &config.jellyfin_url,
+            &config.jellyfin_device_id,
+            http.clone(),
+        );
+        ensure_jellyfin_libraries(&jf_client, &config.jellyfin_admin_token).await;
+    }
+
+    if !config.kavita_admin_api_key.is_empty() {
+        let kv_client = KavitaClient::new(&config.kavita_url, http.clone());
+        // Need JWT for library management — login as admin.
+        match kv_client
+            .login(&config.kavita_admin_username, &config.admin_password)
+            .await
+        {
+            Ok(resp) => {
+                if let Some(token) = resp["token"].as_str() {
+                    ensure_kavita_libraries(&kv_client, token).await;
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "could not login to kavita for library check")
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -278,7 +309,51 @@ async fn init_jellyfin(
         .unwrap_or("admin")
         .to_string();
 
+    // Ensure media libraries exist (idempotent — skips if already created).
+    ensure_jellyfin_libraries(&client, &token).await;
+
     Ok((user_id, token))
+}
+
+/// Create Jellyfin virtual folders for Movies, Shows, and Music if they
+/// don't already exist. Each library type points at a dedicated subdirectory
+/// under the shared `/media` mount so Jellyfin can index content by type.
+async fn ensure_jellyfin_libraries(client: &JellyfinClient, admin_token: &str) {
+    let existing = match client.get_virtual_folders(admin_token).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to list jellyfin virtual folders");
+            return;
+        }
+    };
+
+    let existing_names: Vec<String> = existing
+        .as_array()
+        .unwrap_or(&Vec::new())
+        .iter()
+        .filter_map(|f| f["Name"].as_str().map(|s| s.to_string()))
+        .collect();
+
+    let libraries = [
+        ("Movies", "movies", "/media/Movies"),
+        ("Shows", "tvshows", "/media/Shows"),
+        ("Music", "music", "/media/Music"),
+    ];
+
+    for (name, collection_type, path) in &libraries {
+        if existing_names.iter().any(|n| n == name) {
+            continue;
+        }
+        match client
+            .add_virtual_folder(admin_token, name, collection_type, path)
+            .await
+        {
+            Ok(()) => tracing::info!(library = name, "created jellyfin library"),
+            Err(e) => {
+                tracing::error!(library = name, error = %e, "failed to create jellyfin library")
+            }
+        }
+    }
 }
 
 // ─── Paperless ───────────────────────────────────────────────────────
@@ -392,13 +467,17 @@ async fn init_kavita(
 
     let login_result = client.login(admin_username, password).await;
 
-    let api_key = match login_result {
+    // We need both the JWT token (for admin library ops) and the API key
+    // (for long-lived auth). JWT is required for library creation.
+    let (jwt_token, api_key) = match login_result {
         Ok(resp) => {
             let token = resp["token"]
                 .as_str()
-                .ok_or_else(|| anyhow::anyhow!("no token from kavita login"))?;
+                .ok_or_else(|| anyhow::anyhow!("no token from kavita login"))?
+                .to_string();
 
-            client.create_api_key(token).await?
+            let api_key = client.create_api_key(&token).await?;
+            (token, api_key)
         }
         Err(_) => {
             let resp = http
@@ -418,32 +497,62 @@ async fn init_kavita(
                 anyhow::bail!("kavita admin registration failed: {body}");
             }
 
-            body["apiKey"]
+            // Registration returns a UserDto with JWT token and apiKey.
+            let token = body["token"]
                 .as_str()
-                .ok_or_else(|| anyhow::anyhow!("no apiKey from kavita registration response"))?
-                .to_string()
+                .ok_or_else(|| anyhow::anyhow!("no token from kavita registration response"))?
+                .to_string();
+
+            // Create a persistent API key using the JWT from registration.
+            let api_key = client.create_api_key(&token).await?;
+
+            (token, api_key)
         }
     };
 
-    let libraries = client.get_libraries(&api_key).await?;
-    let lib_count = libraries.as_array().map(|a| a.len()).unwrap_or(0);
-    if lib_count == 0 {
-        let resp = http
-            .post(format!("{base_url}/api/Library/create"))
-            .header("x-api-key", &api_key)
-            .json(&json!({
-                "name": "Reading",
-                "type": 2,
-                "folders": ["/books"],
-            }))
-            .send()
-            .await?;
-        if resp.status().is_success() {
-            tracing::info!("created kavita library");
-        }
-    }
+    // Ensure libraries exist using JWT (API keys lack library management permissions).
+    ensure_kavita_libraries(&client, &jwt_token).await;
 
     Ok((admin_username.to_string(), api_key))
+}
+
+/// Create Kavita libraries for Books and Comics if they don't already exist.
+/// Uses JWT bearer auth (required for admin library endpoints).
+/// Kavita library types: 0=Manga, 1=Comic, 2=Book, 3=Image, 4=LightNovel
+async fn ensure_kavita_libraries(client: &KavitaClient, jwt_token: &str) {
+    let existing = match client.get_libraries_jwt(jwt_token).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to list kavita libraries");
+            return;
+        }
+    };
+
+    let existing_names: Vec<String> = existing
+        .as_array()
+        .unwrap_or(&Vec::new())
+        .iter()
+        .filter_map(|lib| lib["name"].as_str().map(|s| s.to_string()))
+        .collect();
+
+    // Kavita type 2 = Book (epub, pdf), type 1 = Comic (cbz, cbr)
+    let libraries: &[(&str, i32, &str)] =
+        &[("Books", 2, "/books/Books"), ("Comics", 1, "/books/Comics")];
+
+    for (name, lib_type, folder) in libraries {
+        if existing_names.iter().any(|n| n == name) {
+            continue;
+        }
+        match client
+            .create_library_jwt(jwt_token, name, *lib_type, &[folder])
+            .await
+        {
+            Ok(()) => tracing::info!(library = name, "created kavita library"),
+            Err(e) => {
+                tracing::error!(library = name, error = %e, "failed to create kavita library")
+            }
+        }
+    }
 }
 
 // ─── DB helpers ──────────────────────────────────────────────────────

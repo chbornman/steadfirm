@@ -21,6 +21,7 @@ use crate::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         // Library browsing
+        .route("/libraries", get(list_libraries))
         .route("/", get(list_series))
         .route("/{id}", get(get_series_detail))
         .route("/{id}/cover", get(get_series_cover))
@@ -48,10 +49,38 @@ pub fn router() -> Router<AppState> {
 struct SeriesListParams {
     #[serde(flatten)]
     pagination: PaginationParams,
+    /// Optional library filter: "books" or "comics". If omitted, returns all.
+    #[serde(default)]
+    library: Option<String>,
 }
 
 fn kavita_client(state: &AppState) -> KavitaClient {
     KavitaClient::new(&state.config.kavita_url, state.http.clone())
+}
+
+/// List available Kavita libraries (e.g. "Books", "Comics").
+async fn list_libraries(
+    State(state): State<AppState>,
+    user: AuthUser,
+) -> Result<Json<Value>, AppError> {
+    let api_key = kavita_api_key(&user)?;
+    let client = kavita_client(&state);
+    let libraries = client.get_libraries(&api_key).await?;
+
+    let items: Vec<Value> = libraries
+        .as_array()
+        .unwrap_or(&Vec::new())
+        .iter()
+        .map(|lib| {
+            serde_json::json!({
+                "id": lib["id"],
+                "name": lib["name"],
+                "type": lib["type"],
+            })
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!(items)))
 }
 
 async fn list_series(
@@ -63,15 +92,38 @@ async fn list_series(
 
     let client = kavita_client(&state);
 
-    // Get the first library the user has access to.
     let libraries = client.get_libraries(&api_key).await?;
-    let library_id = libraries
-        .as_array()
-        .and_then(|libs| libs.first())
-        .and_then(|lib| lib["id"].as_i64())
-        .ok_or(AppError::ServiceUnavailable(
-            "no reading library found".into(),
-        ))?;
+    let libs = libraries.as_array().ok_or(AppError::ServiceUnavailable(
+        "no reading libraries found".into(),
+    ))?;
+
+    if libs.is_empty() {
+        return Err(AppError::ServiceUnavailable(
+            "no reading libraries found".into(),
+        ));
+    }
+
+    // Filter to the requested library if specified, otherwise use the first one.
+    let library_id = if let Some(ref filter) = params.library {
+        libs.iter()
+            .find(|lib| {
+                lib["name"]
+                    .as_str()
+                    .map(|n| n.eq_ignore_ascii_case(filter))
+                    .unwrap_or(false)
+            })
+            .and_then(|lib| lib["id"].as_i64())
+            .ok_or(AppError::NotFound(format!(
+                "library '{}' not found",
+                filter
+            )))?
+    } else {
+        libs.first()
+            .and_then(|lib| lib["id"].as_i64())
+            .ok_or(AppError::ServiceUnavailable(
+                "no reading library found".into(),
+            ))?
+    };
 
     // Kavita uses 1-indexed pages like our frontend.
     let (resp, total) = client

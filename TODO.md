@@ -257,6 +257,34 @@ These items proxy each service's own metadata matching capabilities through Stea
 
 ---
 
+## Storage Isolation Per Service
+
+**Problem:** Jellyfin, Audiobookshelf, and Kavita use shared filesystem volumes with the backend. The backend writes files to a bind-mounted directory, and the service reads/indexes them. Both the backend and the service can see all files, which violates the principle that only the service controlling an asset should be able to see or touch it.
+
+**Current model:**
+
+| Service | Storage | Who sees files? |
+|---|---|---|
+| Immich (Photos) | API upload — Immich manages its own volume | Immich only |
+| Paperless (Documents) | API upload — Paperless manages its own volume | Paperless only |
+| Jellyfin (Media) | Shared bind mount (`MEDIA_STORAGE_PATH` ↔ `/media`) | Backend + Jellyfin |
+| Audiobookshelf (Audiobooks) | Shared bind mount (`AUDIOBOOKS_STORAGE_PATH` ↔ `/audiobooks`) | Backend + ABS |
+| Kavita (Reading) | Shared bind mount (`READING_STORAGE_PATH` ↔ `/books`) | Backend + Kavita |
+| Files (Steadfirm) | Own volume (`FILES_STORAGE_PATH`) | Backend only |
+
+**Desired model:** Each service's storage is opaque to other services and to the backend after initial file placement. The backend should only need write access during upload, then hand off to the service.
+
+**Options to evaluate:**
+
+1. **Write-only staging** — Backend writes to a staging directory, a background job moves files into the service's volume, then cleans up staging. Backend never reads from service volumes.
+2. **API-only upload** — Where services support it (Immich and Paperless already do), upload via API instead of filesystem. Jellyfin doesn't have an upload API. Audiobookshelf has a limited one. Kavita doesn't.
+3. **Per-service volumes with restricted permissions** — Keep bind mounts but use Unix permissions or Docker volume options to make the backend's access write-only (no read/list). Services get read-only access except for their own metadata directories.
+4. **Object storage (S3/MinIO)** — Move to object storage with per-service buckets and IAM policies. Enables future cloud deployment and scales to large NVMe arrays. Higher implementation cost.
+
+**Priority:** Low for POC (single user, trusted environment). Important before multi-user deployment or moving to dedicated server hardware.
+
+---
+
 ## Missing Specifications
 
 Specs that should be written as the corresponding features mature. See `specs/README.md` for the full index.

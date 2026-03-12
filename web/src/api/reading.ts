@@ -10,8 +10,18 @@ import type {
 } from '@steadfirm/shared';
 import { api } from './client';
 
+export interface ReadingLibrary {
+  id: number;
+  name: string;
+  type: number;
+}
+
 export const readingQueries = {
-  list: (params?: { page?: number; pageSize?: number }) => ({
+  libraries: () => ({
+    queryKey: ['reading', 'libraries'] as const,
+    queryFn: () => api.get('api/v1/reading/libraries').json<ReadingLibrary[]>(),
+  }),
+  list: (params?: { page?: number; pageSize?: number; library?: string }) => ({
     queryKey: ['reading', 'list', params] as const,
     queryFn: () =>
       api
@@ -19,6 +29,7 @@ export const readingQueries = {
           searchParams: {
             ...(params?.page != null && { page: params.page }),
             ...(params?.pageSize != null && { pageSize: params.pageSize }),
+            ...(params?.library != null && { library: params.library }),
           },
         })
         .json<SeriesListResponse>(),

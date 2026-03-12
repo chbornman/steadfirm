@@ -3,6 +3,10 @@
 //! Two entry points:
 //! - `upload_to_reading`: simple single-file upload (dispatched from `upload_file`)
 //! - `upload_reading`: structured multi-file reading upload with series folder structure
+//!
+//! Files are routed to the correct Kavita library subdirectory based on extension:
+//! - Books (epub, pdf) → `{reading_storage_path}/Books/{userId}/`
+//! - Comics (cbz, cbr, cb7) → `{reading_storage_path}/Comics/{userId}/`
 
 use axum::{
     extract::{Multipart, State},
@@ -15,6 +19,20 @@ use crate::error::AppError;
 use crate::services::KavitaClient;
 use crate::AppState;
 
+/// Determine the Kavita library subdirectory for a file based on extension.
+/// Returns "Books" for epub/pdf, "Comics" for cbz/cbr/cb7.
+fn reading_subdir(filename: &str) -> &'static str {
+    let ext = filename
+        .rsplit('.')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    match ext.as_str() {
+        "cbz" | "cbr" | "cb7" | "cbt" => "Comics",
+        _ => "Books", // epub, pdf, and anything else
+    }
+}
+
 /// Simple single-file reading upload — writes to storage and triggers Kavita scan.
 pub async fn upload_to_reading(
     state: &AppState,
@@ -24,13 +42,16 @@ pub async fn upload_to_reading(
     _mime_type: &str,
     relative_path: Option<&str>,
 ) -> Result<(), AppError> {
-    let cred = user
+    // Verify user is provisioned for Kavita (value unused — scan uses admin key).
+    let _cred = user
         .credentials
         .kavita
         .as_ref()
         .ok_or(AppError::ServiceUnavailable(
             "reading not provisioned".into(),
         ))?;
+
+    let subdir = reading_subdir(filename);
 
     // Save to Kavita library folder, preserving folder structure.
     let abs_dir = if let Some(rel) = relative_path {
@@ -39,15 +60,21 @@ pub async fn upload_to_reading(
             .and_then(|p| p.to_str())
             .unwrap_or("");
         if folder.is_empty() {
-            format!("{}/{}", state.config.reading_storage_path, user.id)
-        } else {
             format!(
                 "{}/{}/{}",
-                state.config.reading_storage_path, user.id, folder
+                state.config.reading_storage_path, subdir, user.id
+            )
+        } else {
+            format!(
+                "{}/{}/{}/{}",
+                state.config.reading_storage_path, subdir, user.id, folder
             )
         }
     } else {
-        format!("{}/{}", state.config.reading_storage_path, user.id)
+        format!(
+            "{}/{}/{}",
+            state.config.reading_storage_path, subdir, user.id
+        )
     };
 
     tokio::fs::create_dir_all(&abs_dir)
@@ -60,8 +87,11 @@ pub async fn upload_to_reading(
         .map_err(|e| AppError::Internal(anyhow::anyhow!("write error: {e}")))?;
 
     // Trigger Kavita library scan so it picks up the new file.
+    // Use admin API key — user keys lack scan permissions.
     let kavita_client = KavitaClient::new(&state.config.kavita_url, state.http.clone());
-    let _ = kavita_client.scan_all_libraries(&cred.api_key).await;
+    let _ = kavita_client
+        .scan_all_libraries(&state.config.kavita_admin_api_key)
+        .await;
 
     Ok(())
 }
@@ -79,7 +109,8 @@ pub async fn upload_reading(
     user: AuthUser,
     mut multipart: Multipart,
 ) -> Result<Json<Value>, AppError> {
-    let cred = user
+    // Verify user is provisioned for Kavita (value unused — scan uses admin key).
+    let _cred = user
         .credentials
         .kavita
         .as_ref()
@@ -132,24 +163,27 @@ pub async fn upload_reading(
         "reading upload started"
     );
 
-    let series_dir = format!(
-        "{}/{}/{}",
-        state.config.reading_storage_path, user.id, series_name
-    );
-    tokio::fs::create_dir_all(&series_dir)
-        .await
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("mkdir error: {e}")))?;
-
     for (filename, data) in &files {
+        let subdir = reading_subdir(filename);
+        let series_dir = format!(
+            "{}/{}/{}/{}",
+            state.config.reading_storage_path, subdir, user.id, series_name
+        );
+        tokio::fs::create_dir_all(&series_dir)
+            .await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("mkdir error: {e}")))?;
+
         let file_path = format!("{}/{}", series_dir, filename);
         tokio::fs::write(&file_path, data)
             .await
             .map_err(|e| AppError::Internal(anyhow::anyhow!("write error: {e}")))?;
     }
 
-    // Trigger Kavita library scan
+    // Trigger Kavita library scan — use admin API key for scan permissions.
     let kavita_client = KavitaClient::new(&state.config.kavita_url, state.http.clone());
-    let _ = kavita_client.scan_all_libraries(&cred.api_key).await;
+    let _ = kavita_client
+        .scan_all_libraries(&state.config.kavita_admin_api_key)
+        .await;
 
     tracing::info!(
         user_id = %user.id,

@@ -393,6 +393,59 @@ impl KavitaClient {
 
     // ─── Admin endpoints (for provisioning) ──────────────────────────
 
+    /// Get libraries using a JWT bearer token (needed for admin library management).
+    pub async fn get_libraries_jwt(&self, token: &str) -> Result<Value, AppError> {
+        let resp = self
+            .request(reqwest::Method::GET, "/api/Library/libraries", token)
+            .send()
+            .await?;
+        let resp = check_response("kavita", resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    /// Create a library using a JWT bearer token (admin only).
+    ///
+    /// Library types: 0=Manga, 1=Comic, 2=Book, 3=Image, 4=LightNovel, 5=ComicVine
+    /// File group types: 1=Archive, 2=Epub, 3=Pdf, 4=Images
+    ///
+    /// The Kavita API requires all fields from `UpdateLibraryDto` even on
+    /// create.  Missing `fileGroupTypes` or `excludePatterns` returns 400.
+    pub async fn create_library_jwt(
+        &self,
+        token: &str,
+        name: &str,
+        library_type: i32,
+        folders: &[&str],
+    ) -> Result<(), AppError> {
+        // Accept all file group types by default (Archive, Epub, Pdf, Images).
+        let file_group_types: Vec<i32> = vec![1, 2, 3, 4];
+
+        let resp = self
+            .request(reqwest::Method::POST, "/api/Library/create", token)
+            .json(&serde_json::json!({
+                "id": 0,
+                "name": name,
+                "type": library_type,
+                "folders": folders,
+                "folderWatching": true,
+                "includeInDashboard": true,
+                "includeInSearch": true,
+                "manageCollections": true,
+                "manageReadingLists": true,
+                "allowScrobbling": false,
+                "allowMetadataMatching": true,
+                "enableMetadata": true,
+                "removePrefixForSortName": false,
+                "inheritWebLinksFromFirstChapter": false,
+                "fileGroupTypes": file_group_types,
+                "excludePatterns": [],
+            }))
+            .send()
+            .await?;
+        check_response("kavita", resp).await?;
+        Ok(())
+    }
+
     /// Login as admin to get a JWT token.
     pub async fn login(&self, username: &str, password: &str) -> Result<Value, AppError> {
         let resp = self
