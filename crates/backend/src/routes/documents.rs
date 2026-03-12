@@ -276,6 +276,9 @@ fn paperless_to_document(doc: &Value, _user_id: &str) -> Document {
         .filter_map(|v| v.as_u64())
         .collect();
 
+    // Paperless sets archived_file_name when it has a PDF archive version.
+    let has_archive_version = doc["archived_file_name"].as_str().is_some();
+
     Document {
         thumbnail_url: format!("/api/v1/documents/{id}/thumbnail"),
         preview_url: format!("/api/v1/documents/{id}/preview"),
@@ -288,6 +291,9 @@ fn paperless_to_document(doc: &Value, _user_id: &str) -> Document {
         date_created: doc["created"].as_str().map(|s| s.to_string()),
         date_added: doc["added"].as_str().map(|s| s.to_string()),
         page_count: doc["page_count"].as_u64().map(|v| v as u32),
+        mime_type: doc["mime_type"].as_str().map(|s| s.to_string()),
+        original_file_name: doc["original_file_name"].as_str().map(|s| s.to_string()),
+        has_archive_version,
     }
 }
 

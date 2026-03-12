@@ -20,8 +20,9 @@ steadfirm/
     ui/            — Shared React components: grids, players, viewers (@steadfirm/ui)
     theme/         — Design tokens, styling (@steadfirm/theme)
   infra/           — Docker Compose, Caddyfile, service configs
+  specs/           — Technical specifications (see specs/README.md)
   PRD.md           — Product requirements document
-  SPEC.md          — Technical specification
+  TODO.md          — Technical debt & future work
 ```
 
 `web/` and `crates/app/src/` are **separate React apps** sharing code via `packages/`.

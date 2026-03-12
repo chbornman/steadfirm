@@ -2,13 +2,17 @@
 set -euo pipefail
 
 # ──────────────────────────────────────────────────────────────────────
-# Seed Steadfirm dev environment with public-domain content.
+# Seed Steadfirm dev environment with local content.
 #
-# Creates a demo user, waits for provisioning, then uploads sample files
-# across every service category — giving you a full showcase from a
-# fresh git clone + reset-dev.sh.
+# Uploads sample files from infra/seed-media/ across every service
+# category — giving you a full showcase from a fresh git clone +
+# reset-dev.sh.
+#
+# The seed-media/ directory is gitignored and must be populated
+# separately (see infra/seed-media/README.md or copy files from NAS).
 #
 # Prerequisites:
+#   - infra/seed-media/ is populated with sample content
 #   - infra/reset-dev.sh has been run (or containers are up)
 #   - BetterAuth is running  (cd services/betterauth && bun run dev)
 #   - Backend is running     (cargo run -p steadfirm-backend)
@@ -17,7 +21,7 @@ set -euo pipefail
 # ──────────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SEED_DIR="/tmp/steadfirm-seed"
+SEED_DIR="${SCRIPT_DIR}/seed-media"
 
 # ── Service URLs (match .env defaults) ────────────────────────────────
 BACKEND_URL="${BACKEND_URL:-http://localhost:3001}"
@@ -42,6 +46,28 @@ ok()    { echo -e "${GREEN}[seed]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[seed]${NC} $*"; }
 err()   { echo -e "${RED}[seed]${NC} $*"; }
 header(){ echo -e "\n${BOLD}${CYAN}=== $* ===${NC}"; }
+
+# ── Check seed-media directory ────────────────────────────────────────
+
+if [ ! -d "$SEED_DIR" ]; then
+    err "Seed media directory not found: $SEED_DIR"
+    err ""
+    err "The seed-media/ directory is gitignored and must be populated manually."
+    err "Copy sample files from the NAS or other sources into:"
+    err "  infra/seed-media/"
+    err ""
+    err "Expected structure:"
+    err "  seed-media/"
+    err "    photos/       — JPG, PNG images"
+    err "    documents/    — PDF, TXT, CSV files"
+    err "    reading/      — EPUB, CBZ, CBR files"
+    err "    movies/       — Movie files (MP4, MKV)"
+    err "    shows/        — TV show episodes"
+    err "    audiobooks/   — Author/Title/chapter.mp3"
+    err "    music/        — MP3, FLAC files"
+    err "    files/        — Misc catchall (YAML, JSON, etc.)"
+    exit 1
+fi
 
 # ── Preflight checks ─────────────────────────────────────────────────
 
@@ -72,14 +98,6 @@ for cmd in curl jq; do
         exit 1
     fi
 done
-
-# ── Create seed directory ─────────────────────────────────────────────
-mkdir -p "$SEED_DIR"
-info "Seed content directory: $SEED_DIR"
-
-# Drop a marker so we can detect stale cached files after downloads.
-SEED_MARKER="$SEED_DIR/.seed-run-marker"
-touch "$SEED_MARKER"
 
 # ── Step 1: Create demo user via BetterAuth ───────────────────────────
 
@@ -144,22 +162,6 @@ if [ $PROVISION_ELAPSED -ge $PROVISION_TIMEOUT ]; then
     warn "Provisioning timed out after ${PROVISION_TIMEOUT}s — some uploads may fail"
 fi
 
-# ── Helper: download if not cached ────────────────────────────────────
-
-download() {
-    local url="$1" dest="$2"
-    if [ -f "$dest" ]; then
-        touch "$dest"  # Mark as still-needed for stale file cleanup
-        return 0
-    fi
-    info "  Downloading $(basename "$dest")..."
-    curl -sfL --max-time 60 -o "$dest" "$url" || {
-        warn "  Failed to download: $url (skipping)"
-        rm -f "$dest"
-        return 0
-    }
-}
-
 # ── Helper: upload to backend ─────────────────────────────────────────
 
 upload() {
@@ -186,308 +188,107 @@ upload() {
     fi
 }
 
-upload_audiobook() {
-    local title="$1" author="$2"
-    shift 2
-    local files=("$@")
+# ── Helper: count files in a directory ────────────────────────────────
 
-    local args=(
-        -sf -X POST "${BACKEND_URL}/api/v1/upload/audiobook"
-        -H "Cookie: ${SESSION_COOKIE}"
-        -F "title=${title}"
-        -F "author=${author}"
-    )
-
-    local i=0
-    for f in "${files[@]}"; do
-        args+=(-F "${i}=@${f}")
-        i=$((i + 1))
-    done
-
-    local response
-    response=$(curl "${args[@]}" 2>/dev/null || echo '{"error": "upload failed"}')
-
-    if echo "$response" | jq -e '.status == "uploaded"' >/dev/null 2>&1; then
-        ok "  [audiobooks] ${author} — ${title} (${#files[@]} files)"
+count_files() {
+    local dir="$1"
+    if [ -d "$dir" ]; then
+        find "$dir" -maxdepth 1 -type f | wc -l
     else
-        warn "  [audiobooks] ${author} — ${title} — FAILED"
+        echo 0
     fi
 }
 
 # ======================================================================
-#  DOWNLOAD PUBLIC DOMAIN CONTENT
+#  UPLOAD SEED CONTENT FROM LOCAL seed-media/ DIRECTORY
 # ======================================================================
-# All content below is public domain or CC0-licensed.
-# Files are cached in /tmp/steadfirm-seed so repeated runs are fast.
-# ======================================================================
-
-header "Downloading seed content"
 
 # ── PHOTOS ────────────────────────────────────────────────────────────
-# Unsplash provides CC0/Unsplash-licensed photos. Using their source API
-# for deterministic, high-quality sample images.
-mkdir -p "$SEED_DIR/photos"
-
-download "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=1920" \
-    "$SEED_DIR/photos/mountain-landscape.jpg"
-download "https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=1920" \
-    "$SEED_DIR/photos/lake-sunset.jpg"
-download "https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=1920" \
-    "$SEED_DIR/photos/valley-sunrise.jpg"
-download "https://images.unsplash.com/photo-1518791841217-8f162f1e1131?w=1920" \
-    "$SEED_DIR/photos/cat-portrait.jpg"
-download "https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=1920" \
-    "$SEED_DIR/photos/golden-retriever.jpg"
-download "https://images.unsplash.com/photo-1531366936337-7c912a4589a7?w=1920" \
-    "$SEED_DIR/photos/northern-lights.jpg"
-
-# A PNG screenshot-style image
-download "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png" \
-    "$SEED_DIR/photos/transparency-test.png"
+if [ -d "$SEED_DIR/photos" ] && [ "$(count_files "$SEED_DIR/photos")" -gt 0 ]; then
+    header "Uploading photos ($(count_files "$SEED_DIR/photos") files)"
+    for f in "$SEED_DIR/photos"/*; do
+        [ -f "$f" ] && upload "$f" "photos"
+    done
+else
+    warn "No photos found in $SEED_DIR/photos/"
+fi
 
 # ── DOCUMENTS ─────────────────────────────────────────────────────────
-# Real public-domain documents for Paperless to OCR and index.
-mkdir -p "$SEED_DIR/documents"
+if [ -d "$SEED_DIR/documents" ] && [ "$(count_files "$SEED_DIR/documents")" -gt 0 ]; then
+    header "Uploading documents ($(count_files "$SEED_DIR/documents") files)"
+    for f in "$SEED_DIR/documents"/*; do
+        [ -f "$f" ] && upload "$f" "documents"
+    done
+else
+    warn "No documents found in $SEED_DIR/documents/"
+fi
 
-# Sample PDF document for Paperless OCR testing
-download "https://filesamples.com/samples/document/pdf/sample1.pdf" \
-    "$SEED_DIR/documents/sample-invoice.pdf"
+# ── READING (ebooks + comics + manga) ─────────────────────────────────
+if [ -d "$SEED_DIR/reading" ] && [ "$(count_files "$SEED_DIR/reading")" -gt 0 ]; then
+    header "Uploading reading material ($(count_files "$SEED_DIR/reading") files)"
+    for f in "$SEED_DIR/reading"/*; do
+        [ -f "$f" ] && upload "$f" "reading"
+    done
+else
+    warn "No reading material found in $SEED_DIR/reading/"
+fi
 
-# A simple text file (we create it inline)
-cat > "$SEED_DIR/documents/meeting-notes.txt" << 'DOCEOF'
-Meeting Notes — Steadfirm Dev Sync
-Date: 2026-03-01
-Attendees: Caleb, Demo User
+# ── MEDIA: Movies ─────────────────────────────────────────────────────
+if [ -d "$SEED_DIR/movies" ] && [ "$(count_files "$SEED_DIR/movies")" -gt 0 ]; then
+    header "Uploading movies ($(count_files "$SEED_DIR/movies") files)"
+    for f in "$SEED_DIR/movies"/*; do
+        [ -f "$f" ] && upload "$f" "media"
+    done
+else
+    warn "No movies found in $SEED_DIR/movies/"
+fi
 
-Agenda:
-1. Review drop zone classification accuracy
-2. Discuss audiobook detection heuristics
-3. Plan mobile app offline sync
-
-Action Items:
-- [ ] Improve PDF classification confidence
-- [ ] Add TMDb lookup for media folder naming
-- [ ] Test Kavita library scanning with large collections
-
-Next meeting: 2026-03-08
-DOCEOF
-
-# A CSV spreadsheet
-cat > "$SEED_DIR/documents/inventory.csv" << 'CSVEOF'
-Item,Category,Quantity,Price
-Laptop,Electronics,5,1299.99
-Monitor,Electronics,10,449.99
-Keyboard,Peripherals,25,89.99
-Mouse,Peripherals,25,49.99
-Headset,Audio,15,129.99
-Webcam,Video,10,79.99
-USB Hub,Accessories,20,34.99
-CSVEOF
-
-# Plain text document (RTF is not supported by Paperless)
-cat > "$SEED_DIR/documents/project-charter.txt" << 'TXTEOF'
-Project Charter: Steadfirm
-
-Objective: Build a unified personal cloud platform that replaces 5+ separate
-services with one login.
-
-Scope:
-- Photos (Immich)
-- Media (Jellyfin)
-- Documents (Paperless-ngx)
-- Audiobooks (Audiobookshelf)
-- Reading (Kavita)
-- Files (Steadfirm storage)
-
-Success Criteria: Users never see infrastructure. One drag-and-drop upload
-handles everything.
-TXTEOF
-
-# ── READING (ebooks + comics) ─────────────────────────────────────────
-# Public domain books from Project Gutenberg and Standard Ebooks.
-mkdir -p "$SEED_DIR/reading"
-
-# Alice's Adventures in Wonderland — Lewis Carroll (public domain)
-download "https://www.gutenberg.org/ebooks/11.epub3.images" \
-    "$SEED_DIR/reading/alice-in-wonderland.epub"
-
-# The Art of War — Sun Tzu (public domain)
-download "https://www.gutenberg.org/ebooks/132.epub3.images" \
-    "$SEED_DIR/reading/the-art-of-war.epub"
-
-# Frankenstein — Mary Shelley (public domain)
-download "https://www.gutenberg.org/ebooks/84.epub3.images" \
-    "$SEED_DIR/reading/frankenstein.epub"
-
-# ── MEDIA (video) ─────────────────────────────────────────────────────
-# Public-domain / CC0 video clips.
-mkdir -p "$SEED_DIR/media"
-
-# Big Buck Bunny trailer — Blender Foundation, CC BY 3.0
-download "https://download.blender.org/peach/trailer/trailer_480p.mov" \
-    "$SEED_DIR/media/Big Buck Bunny (2008).mov"
-
-# Use the same Big Buck Bunny in a second format for variety
-# (Sintel trailer URL is dead)
-download "https://download.blender.org/peach/trailer/trailer_1080p.mov" \
-    "$SEED_DIR/media/Big Buck Bunny Trailer (2008).mov"
+# ── MEDIA: TV Shows ──────────────────────────────────────────────────
+if [ -d "$SEED_DIR/shows" ] && [ "$(count_files "$SEED_DIR/shows")" -gt 0 ]; then
+    header "Uploading TV shows ($(count_files "$SEED_DIR/shows") files)"
+    for f in "$SEED_DIR/shows"/*; do
+        [ -f "$f" ] && upload "$f" "media"
+    done
+else
+    warn "No TV shows found in $SEED_DIR/shows/"
+fi
 
 # ── AUDIOBOOKS ────────────────────────────────────────────────────────
-# LibriVox recordings — public domain readings of public domain books.
-mkdir -p "$SEED_DIR/audiobooks/Edgar Allan Poe/The Tell-Tale Heart"
-mkdir -p "$SEED_DIR/audiobooks/H.G. Wells/The Time Machine"
-
-# Sample MP3 files as audiobook stand-ins (archive.org is unreliable)
-download "https://filesamples.com/samples/audio/mp3/sample1.mp3" \
-    "$SEED_DIR/audiobooks/Edgar Allan Poe/The Tell-Tale Heart/01 - The Tell-Tale Heart.mp3"
-
-download "https://filesamples.com/samples/audio/mp3/sample2.mp3" \
-    "$SEED_DIR/audiobooks/H.G. Wells/The Time Machine/01 - Chapter 1.mp3"
-download "https://filesamples.com/samples/audio/mp3/sample3.mp3" \
-    "$SEED_DIR/audiobooks/H.G. Wells/The Time Machine/02 - Chapter 2.mp3"
-download "https://filesamples.com/samples/audio/mp3/sample4.mp3" \
-    "$SEED_DIR/audiobooks/H.G. Wells/The Time Machine/03 - Chapter 3.mp3"
-
-# ── MUSIC (media — music subfolder) ──────────────────────────────────
-# Short public domain music clips for Jellyfin music library.
-mkdir -p "$SEED_DIR/music"
-
-# Sample music file (Musopen URL no longer works)
-download "https://filesamples.com/samples/audio/mp3/sample1.mp3" \
-    "$SEED_DIR/music/Chopin - Nocturne Op 9 No 2.mp3"
-
-# ── PDFs (ambiguous — tests classifier) ──────────────────────────────
-# PDFs are low-confidence in heuristics (0.5) — these test the LLM path.
-mkdir -p "$SEED_DIR/pdfs"
-
-# A real PDF — should go to Documents (tests classifier)
-download "https://freetestdata.com/wp-content/uploads/2021/09/Free_Test_Data_100KB_PDF.pdf" \
-    "$SEED_DIR/pdfs/sample-report.pdf"
-
-# ── FILES (catchall — exotic/unknown formats) ─────────────────────────
-# These are intentionally formats we don't classify yet.
-# They should land in the "files" catchall category.
-mkdir -p "$SEED_DIR/files"
-
-# A YAML config file
-cat > "$SEED_DIR/files/docker-compose.yml" << 'YAMLEOF'
-version: "3.8"
-services:
-  web:
-    image: nginx:latest
-    ports:
-      - "8080:80"
-    volumes:
-      - ./html:/usr/share/nginx/html
-YAMLEOF
-
-# A JSON data file
-cat > "$SEED_DIR/files/sample-data.json" << 'JSONEOF'
-{
-  "users": [
-    {"id": 1, "name": "Alice", "role": "admin"},
-    {"id": 2, "name": "Bob", "role": "user"},
-    {"id": 3, "name": "Charlie", "role": "user"}
-  ],
-  "metadata": {
-    "version": "1.0.0",
-    "generated": "2026-03-01T00:00:00Z"
-  }
-}
-JSONEOF
-
-# A shell script
-cat > "$SEED_DIR/files/backup.sh" << 'SHEOF'
-#!/bin/bash
-# Automated backup script
-DATE=$(date +%Y-%m-%d)
-tar -czf "/backups/backup-${DATE}.tar.gz" /data
-echo "Backup complete: backup-${DATE}.tar.gz"
-SHEOF
-
-# A Markdown file
-cat > "$SEED_DIR/files/README.md" << 'MDEOF'
-# Sample Project
-
-This is a sample README file that would typically live in a code repository.
-
-## Features
-- Feature one
-- Feature two
-- Feature three
-
-## License
-MIT
-MDEOF
-
-# An SVG image (not a raster photo — should be files, not photos)
-cat > "$SEED_DIR/files/logo.svg" << 'SVGEOF'
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <circle cx="50" cy="50" r="45" fill="#3b82f6" />
-  <text x="50" y="58" text-anchor="middle" fill="white" font-size="24" font-family="sans-serif">SF</text>
-</svg>
-SVGEOF
-
-# A .zip archive
-(cd "$SEED_DIR/files" && echo "archive contents" > archive-test.txt && \
-    zip -qj test-archive.zip archive-test.txt && rm archive-test.txt) 2>/dev/null || \
-    warn "zip not available — skipping archive"
-
-# ── Clean stale cached files ───────────────────────────────────────────
-# Remove any files older than our run marker — these are leftovers from
-# previous runs with different filenames/URLs.
-STALE_COUNT=$(find "$SEED_DIR" -type f ! -newer "$SEED_MARKER" ! -name ".seed-run-marker" 2>/dev/null | wc -l)
-if [ "$STALE_COUNT" -gt 0 ]; then
-    info "Removing $STALE_COUNT stale cached file(s)"
-    find "$SEED_DIR" -type f ! -newer "$SEED_MARKER" ! -name ".seed-run-marker" -delete 2>/dev/null || true
+if [ -d "$SEED_DIR/audiobooks" ]; then
+    AUDIOBOOK_COUNT=$(find "$SEED_DIR/audiobooks" -type f -name "*.mp3" -o -name "*.m4a" -o -name "*.m4b" | wc -l)
+    if [ "$AUDIOBOOK_COUNT" -gt 0 ]; then
+        header "Uploading audiobooks ($AUDIOBOOK_COUNT files)"
+        # Upload preserving Author/Title directory structure via relative_path
+        find "$SEED_DIR/audiobooks" -type f \( -name "*.mp3" -o -name "*.m4a" -o -name "*.m4b" \) | sort | while read -r f; do
+            rel="${f#"$SEED_DIR/audiobooks/"}"
+            upload "$f" "audiobooks" "$(basename "$f")" "$rel"
+        done
+    else
+        warn "No audiobook files found in $SEED_DIR/audiobooks/"
+    fi
+else
+    warn "No audiobooks directory found"
 fi
-rm -f "$SEED_MARKER"
 
-# ======================================================================
-#  UPLOAD SEED CONTENT
-# ======================================================================
+# ── MUSIC ─────────────────────────────────────────────────────────────
+if [ -d "$SEED_DIR/music" ] && [ "$(count_files "$SEED_DIR/music")" -gt 0 ]; then
+    header "Uploading music ($(count_files "$SEED_DIR/music") files)"
+    for f in "$SEED_DIR/music"/*; do
+        [ -f "$f" ] && upload "$f" "media"
+    done
+else
+    warn "No music found in $SEED_DIR/music/"
+fi
 
-header "Uploading photos"
-for f in "$SEED_DIR/photos"/*; do
-    [ -f "$f" ] && upload "$f" "photos"
-done
-
-header "Uploading documents"
-for f in "$SEED_DIR/documents"/*; do
-    [ -f "$f" ] && upload "$f" "documents"
-done
-
-header "Uploading reading material"
-for f in "$SEED_DIR/reading"/*; do
-    [ -f "$f" ] && upload "$f" "reading"
-done
-
-header "Uploading media"
-for f in "$SEED_DIR/media"/*; do
-    [ -f "$f" ] && upload "$f" "media"
-done
-
-header "Uploading audiobooks"
-# Upload via the directory-structure path (relative_path preserves Author/Title)
-find "$SEED_DIR/audiobooks" -type f -name "*.mp3" | sort | while read -r f; do
-    rel="${f#"$SEED_DIR/audiobooks/"}"
-    upload "$f" "audiobooks" "$(basename "$f")" "$rel"
-done
-
-header "Uploading music"
-for f in "$SEED_DIR/music"/*; do
-    [ -f "$f" ] && upload "$f" "media"
-done
-
-header "Uploading PDFs (classifier test)"
-for f in "$SEED_DIR/pdfs"/*; do
-    [ -f "$f" ] && upload "$f" "documents"
-done
-
-header "Uploading misc files (catchall)"
-for f in "$SEED_DIR/files"/*; do
-    [ -f "$f" ] && upload "$f" "files"
-done
+# ── FILES (catchall) ──────────────────────────────────────────────────
+if [ -d "$SEED_DIR/files" ] && [ "$(count_files "$SEED_DIR/files")" -gt 0 ]; then
+    header "Uploading misc files ($(count_files "$SEED_DIR/files") files)"
+    for f in "$SEED_DIR/files"/*; do
+        [ -f "$f" ] && upload "$f" "files"
+    done
+else
+    warn "No misc files found in $SEED_DIR/files/"
+fi
 
 # ======================================================================
 #  SUMMARY
@@ -499,15 +300,22 @@ echo -e "  ${BOLD}Demo account${NC}"
 echo -e "  Email:    ${CYAN}${DEMO_EMAIL}${NC}"
 echo -e "  Password: ${CYAN}${DEMO_PASSWORD}${NC}"
 echo ""
-echo -e "  ${BOLD}What was seeded${NC}"
-echo "  Photos:     Landscape & animal photos (JPG, PNG)"
-echo "  Documents:  Meeting notes, spreadsheet, charter (TXT, CSV)"
-echo "  Reading:    Alice in Wonderland, Art of War, Frankenstein (EPUB)"
-echo "  Media:      Big Buck Bunny trailers (MOV)"
-echo "  Audiobooks: Sample MP3 audiobook chapters"
-echo "  Music:      Sample MP3 (routed to media)"
-echo "  PDFs:       Sample report (classifier test)"
-echo "  Files:      YAML, JSON, shell script, markdown, SVG, ZIP"
+echo -e "  ${BOLD}What was seeded (from ${SEED_DIR})${NC}"
+
+# Print counts per category
+for category in photos documents reading movies shows music files; do
+    dir="$SEED_DIR/$category"
+    if [ -d "$dir" ]; then
+        count=$(find "$dir" -type f | wc -l)
+        printf "  %-14s %d file(s)\n" "$category:" "$count"
+    fi
+done
+# Audiobooks count separately (nested dirs)
+if [ -d "$SEED_DIR/audiobooks" ]; then
+    count=$(find "$SEED_DIR/audiobooks" -type f | wc -l)
+    printf "  %-14s %d file(s)\n" "audiobooks:" "$count"
+fi
+
 echo ""
 echo -e "  ${BOLD}Open the app${NC}"
 echo "  http://localhost:5173"

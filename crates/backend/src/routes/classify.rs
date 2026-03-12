@@ -33,6 +33,11 @@ use steadfirm_shared::classify::{
 };
 use steadfirm_shared::ServiceKind;
 
+/// LLM metadata indexed by global file index, used by group detectors
+/// to enhance regex-parsed metadata with LLM-inferred clean titles,
+/// years, series info, etc.
+type LlmMetadataMap = HashMap<usize, LlmFileClassification>;
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", post(classify))
@@ -116,9 +121,13 @@ type AllGroups = (
     Vec<ReadingGroup>,
 );
 
-fn build_all_groups(files: &[FileEntry], results: &[FileClassificationResult]) -> AllGroups {
-    let audiobook_groups = detect_audiobook_groups(files, results);
-    let tv_show_groups = detect_tv_show_groups(files, results);
+fn build_all_groups(
+    files: &[FileEntry],
+    results: &[FileClassificationResult],
+    llm_metadata: &LlmMetadataMap,
+) -> AllGroups {
+    let audiobook_groups = detect_audiobook_groups(files, results, llm_metadata);
+    let tv_show_groups = detect_tv_show_groups(files, results, llm_metadata);
 
     // Collect all TV show file indices to exclude from movie detection
     let tv_file_indices: std::collections::HashSet<usize> = tv_show_groups
@@ -126,9 +135,9 @@ fn build_all_groups(files: &[FileEntry], results: &[FileClassificationResult]) -
         .flat_map(|g| g.file_indices.iter().copied())
         .collect();
 
-    let movie_groups = detect_movie_groups(files, results, &tv_file_indices);
-    let music_groups = detect_music_groups(files, results);
-    let reading_groups = detect_reading_groups(files, results);
+    let movie_groups = detect_movie_groups(files, results, &tv_file_indices, llm_metadata);
+    let music_groups = detect_music_groups(files, results, llm_metadata);
+    let reading_groups = detect_reading_groups(files, results, llm_metadata);
 
     (
         audiobook_groups,
@@ -145,9 +154,10 @@ fn build_sse_done(
     files: &[FileEntry],
     results: &[FileClassificationResult],
     debug_info: Option<ClassifyDebugInfo>,
+    llm_metadata: &LlmMetadataMap,
 ) -> SseDone {
     let (audiobook_groups, tv_show_groups, movie_groups, music_groups, reading_groups) =
-        build_all_groups(files, results);
+        build_all_groups(files, results, llm_metadata);
     SseDone {
         classifications,
         audiobook_groups,
@@ -188,6 +198,10 @@ async fn classify_stream(
         let file_count = request.files.len();
         tracing::info!(file_count, "classify stream started");
         yield sse_log!("[classify] stream started — {} files", file_count);
+
+        // LLM metadata map — populated during LLM classification, used by
+        // group detectors to enhance regex-parsed metadata with clean titles.
+        let mut llm_metadata: LlmMetadataMap = HashMap::new();
 
         // ── Step 1: Heuristic classification ──
         let mut results: Vec<FileClassificationResult> = Vec::with_capacity(file_count);
@@ -230,7 +244,7 @@ async fn classify_stream(
         if low_confidence.is_empty() {
             yield sse_log!("[classify] all files classified by heuristics — skipping LLM");
             // All files classified by heuristics — skip LLM
-            let done = build_sse_done(vec![], &request.files, &results, None);
+            let done = build_sse_done(vec![], &request.files, &results, None, &llm_metadata);
             yield sse_log!("[classify] groups: {} audiobooks, {} tv shows, {} movies, {} music, {} reading",
                 done.audiobook_groups.len(), done.tv_show_groups.len(),
                 done.movie_groups.len(), done.music_groups.len(), done.reading_groups.len());
@@ -258,7 +272,7 @@ async fn classify_stream(
                 }
             }
 
-            let done = build_sse_done(vec![], &request.files, &results, None);
+            let done = build_sse_done(vec![], &request.files, &results, None, &llm_metadata);
             yield sse_log!("[classify] groups: {} audiobooks, {} tv shows, {} movies, {} music, {} reading (AI disabled)",
                 done.audiobook_groups.len(), done.tv_show_groups.len(),
                 done.movie_groups.len(), done.music_groups.len(), done.reading_groups.len());
@@ -370,6 +384,9 @@ async fn classify_stream(
                                                     result.ai_classified = true;
                                                 }
 
+                                                // Store LLM metadata for group detectors
+                                                llm_metadata.insert(global_idx, llm_file.clone());
+
                                                 partial_classifications.push(SseClassification {
                                                     index: global_idx,
                                                     service,
@@ -422,7 +439,7 @@ async fn classify_stream(
                                 duration_ms: start.elapsed().as_millis() as u64,
                             });
 
-                            let done = build_sse_done(partial_classifications, &request.files, &results, debug_info);
+                            let done = build_sse_done(partial_classifications, &request.files, &results, debug_info, &llm_metadata);
                             yield sse_log!("[classify] sending done event (error recovery path)");
                             if let Ok(data) = serde_json::to_string(&done) {
                                 yield Ok(Event::default().event("done").data(data));
@@ -446,15 +463,18 @@ async fn classify_stream(
                                                     let confidence = llm_file.confidence.clamp(0.0, 1.0);
                                                     let reasoning = Some(llm_file.reasoning.clone());
 
-                                                    // Update local results for audiobook grouping
-                                                    if let Some(result) = results.get_mut(global_idx) {
-                                                        result.service = service;
-                                                        result.confidence = confidence;
-                                                        result.reasoning = reasoning.clone();
-                                                        result.ai_classified = true;
-                                                    }
+                                    // Update local results for group detection
+                                                     if let Some(result) = results.get_mut(global_idx) {
+                                                         result.service = service;
+                                                         result.confidence = confidence;
+                                                         result.reasoning = reasoning.clone();
+                                                         result.ai_classified = true;
+                                                     }
 
-                                                    yield sse_log!(
+                                                     // Store LLM metadata for group detectors
+                                                     llm_metadata.insert(global_idx, llm_file.clone());
+
+                                                     yield sse_log!(
                                                         "[classify]   file[{}] → {:?} ({:.0}%) — {}",
                                                         global_idx, service, confidence * 100.0, llm_file.reasoning
                                                     );
@@ -501,7 +521,7 @@ async fn classify_stream(
                             });
 
                             // ── Step 3: Build all groups ──
-                            let done = build_sse_done(classifications, &request.files, &results, debug_info);
+                            let done = build_sse_done(classifications, &request.files, &results, debug_info, &llm_metadata);
 
                             tracing::info!(
                                 file_count,
@@ -547,7 +567,7 @@ async fn classify_stream(
                         }
 
                         // Send done event so frontend can finalize
-                        let done = build_sse_done(vec![], &request.files, &results, None);
+                        let done = build_sse_done(vec![], &request.files, &results, None, &llm_metadata);
                         if let Ok(data) = serde_json::to_string(&done) {
                             yield sse_log!("[classify] sending done event (LLM start error path)");
                             yield Ok(Event::default().event("done").data(data));
@@ -695,6 +715,7 @@ async fn classify(
         .map(|(i, f)| heuristic_classify(i, f))
         .collect();
 
+    let mut llm_metadata: LlmMetadataMap = HashMap::new();
     let mut debug_info: Option<ClassifyDebugInfo> = None;
     if state.ai.read().await.is_enabled() {
         let low_confidence: Vec<(usize, &FileEntry)> = results
@@ -727,6 +748,8 @@ async fn classify(
                                     result.reasoning = Some(llm_file.reasoning.clone());
                                     result.ai_classified = true;
                                 }
+                                // Store LLM metadata for group detectors
+                                llm_metadata.insert(global_idx, llm_file.clone());
                             }
                         }
                         debug_info = Some(output.debug_info);
@@ -740,7 +763,7 @@ async fn classify(
     }
 
     let (audiobook_groups, tv_show_groups, movie_groups, music_groups, reading_groups) =
-        build_all_groups(&request.files, &results);
+        build_all_groups(&request.files, &results, &llm_metadata);
 
     tracing::info!(
         file_count,
@@ -1314,6 +1337,7 @@ fn extract_sequence(s: &str) -> Option<String> {
 fn detect_audiobook_groups(
     files: &[FileEntry],
     results: &[FileClassificationResult],
+    llm_metadata: &LlmMetadataMap,
 ) -> Vec<AudiobookGroup> {
     let audiobook_indices: Vec<usize> = results
         .iter()
@@ -1387,16 +1411,27 @@ fn detect_audiobook_groups(
         if folder_path == "ungrouped" {
             for &idx in indices {
                 let file = &files[idx];
-                let title = file
-                    .filename
-                    .rsplit('.')
-                    .next_back()
-                    .unwrap_or(&file.filename)
-                    .to_string();
+                // Use LLM metadata for clean title/author/series when available
+                let (title, author, series) =
+                    if let Some(llm) = llm_metadata.get(&idx).and_then(|l| l.audiobook_metadata.as_ref()) {
+                        (
+                            llm.title.clone(),
+                            llm.author.clone(),
+                            llm.series.clone(),
+                        )
+                    } else {
+                        let t = file
+                            .filename
+                            .rsplit('.')
+                            .next_back()
+                            .unwrap_or(&file.filename)
+                            .to_string();
+                        (t, None, None)
+                    };
                 groups.push(AudiobookGroup {
                     title,
-                    author: None,
-                    series: None,
+                    author,
+                    series,
                     series_sequence: None,
                     narrator: None,
                     year: None,
@@ -1431,12 +1466,26 @@ fn detect_audiobook_groups(
         // Parse the title folder for year, sequence, narrator
         let (title, parsed_year, parsed_sequence, parsed_narrator) = parse_title_folder(&raw_title);
 
+        // Enhance with LLM metadata from the first file in this group
+        let llm_ab = indices
+            .first()
+            .and_then(|&idx| llm_metadata.get(&idx))
+            .and_then(|l| l.audiobook_metadata.as_ref());
+
+        let final_title = llm_ab.map(|m| m.title.clone()).unwrap_or(title);
+        let final_author = llm_ab
+            .and_then(|m| m.author.clone())
+            .or(author);
+        let final_series = llm_ab
+            .and_then(|m| m.series.clone())
+            .or(series);
+
         let cover_index = cover_images.get(folder_path).copied();
 
         groups.push(AudiobookGroup {
-            title,
-            author,
-            series: series.or(None),
+            title: final_title,
+            author: final_author,
+            series: final_series,
             series_sequence: parsed_sequence,
             narrator: parsed_narrator,
             year: parsed_year,
@@ -1455,6 +1504,7 @@ fn detect_audiobook_groups(
 fn detect_tv_show_groups(
     files: &[FileEntry],
     results: &[FileClassificationResult],
+    llm_metadata: &LlmMetadataMap,
 ) -> Vec<TvShowGroup> {
     let video_exts: std::collections::HashSet<&str> =
         crate::constants::VIDEO_EXTENSIONS.iter().copied().collect();
@@ -1490,9 +1540,17 @@ fn detect_tv_show_groups(
         )
         .to_lowercase();
 
+        // Check LLM metadata first for TV show identification
+        let llm_tv = llm_metadata
+            .get(&i)
+            .and_then(|l| l.media_metadata.as_ref())
+            .filter(|m| m.media_type == "tv_show");
+
         if let Some((season, episode, episode_end)) = parse_season_episode(&combined) {
-            // Infer series name from folder or filename
-            let series_name = infer_series_name(file);
+            // Regex found S##E## — use LLM metadata for series name if available
+            let series_name = llm_tv
+                .map(|m| m.title.clone())
+                .unwrap_or_else(|| infer_series_name(file));
             show_episodes.entry(series_name).or_default().push((
                 i,
                 season,
@@ -1500,6 +1558,19 @@ fn detect_tv_show_groups(
                 episode_end,
                 parse_episode_title(file),
             ));
+        } else if let Some(tv) = llm_tv {
+            // No S##E## in filename, but LLM identified as TV show with
+            // season/episode metadata — use LLM values
+            if let (Some(season), Some(episode)) = (tv.season, tv.episode) {
+                let series_name = tv.title.clone();
+                show_episodes.entry(series_name).or_default().push((
+                    i,
+                    season,
+                    episode,
+                    tv.episode_end,
+                    parse_episode_title(file),
+                ));
+            }
         }
     }
 
@@ -1541,8 +1612,16 @@ fn detect_tv_show_groups(
             .map(|(i, _)| i)
             .collect();
 
-        // Try to extract year from folder structure (e.g. "Breaking Bad (2008)")
-        let year = extract_year_from_folder_or_name(series_name);
+        // Try to extract year — prefer LLM metadata, fall back to regex
+        let llm_tv_meta = video_indices
+            .first()
+            .and_then(|&idx| llm_metadata.get(&idx))
+            .and_then(|l| l.media_metadata.as_ref())
+            .filter(|m| m.media_type == "tv_show");
+
+        let year = llm_tv_meta
+            .and_then(|m| m.year.clone())
+            .or_else(|| extract_year_from_folder_or_name(series_name));
 
         let clean_name = if let Some(ref y) = year {
             // Strip year from series name
@@ -1720,6 +1799,7 @@ fn detect_movie_groups(
     files: &[FileEntry],
     results: &[FileClassificationResult],
     tv_show_file_indices: &std::collections::HashSet<usize>,
+    llm_metadata: &LlmMetadataMap,
 ) -> Vec<MovieGroup> {
     let video_exts: std::collections::HashSet<&str> =
         crate::constants::VIDEO_EXTENSIONS.iter().copied().collect();
@@ -1750,7 +1830,20 @@ fn detect_movie_groups(
             continue;
         }
 
-        let (title, year, resolution, source) = parse_movie_name(&file.filename);
+        let (parsed_title, parsed_year, resolution, source) = parse_movie_name(&file.filename);
+
+        // Use LLM metadata for clean title/year when available
+        let llm_movie = llm_metadata
+            .get(&i)
+            .and_then(|l| l.media_metadata.as_ref())
+            .filter(|m| m.media_type == "movie");
+
+        let title = llm_movie
+            .map(|m| m.title.clone())
+            .unwrap_or(parsed_title);
+        let year = llm_movie
+            .and_then(|m| m.year.clone())
+            .or(parsed_year);
 
         if title.is_empty() {
             continue;
@@ -1827,6 +1920,7 @@ fn detect_movie_groups(
 fn detect_music_groups(
     files: &[FileEntry],
     results: &[FileClassificationResult],
+    llm_metadata: &LlmMetadataMap,
 ) -> Vec<MusicAlbumGroup> {
     let audio_exts: std::collections::HashSet<&str> = crate::constants::MUSIC_AUDIO_EXTENSIONS
         .iter()
@@ -1938,10 +2032,27 @@ fn detect_music_groups(
             None
         });
 
+        // Enhance with LLM metadata from the first file in this group
+        let llm_music = indices
+            .first()
+            .and_then(|&idx| llm_metadata.get(&idx))
+            .and_then(|l| l.media_metadata.as_ref())
+            .filter(|m| m.media_type == "music");
+
+        let final_album = llm_music
+            .and_then(|m| m.album.clone())
+            .unwrap_or(album);
+        let final_artist = llm_music
+            .and_then(|m| m.artist.clone())
+            .or(artist);
+        let final_year = llm_music
+            .and_then(|m| m.year.clone())
+            .or(year);
+
         groups.push(MusicAlbumGroup {
-            album,
-            artist,
-            year,
+            album: final_album,
+            artist: final_artist,
+            year: final_year,
             file_indices: indices.clone(),
             cover_index,
             probe_data: None,
@@ -1957,6 +2068,7 @@ fn detect_music_groups(
 fn detect_reading_groups(
     files: &[FileEntry],
     results: &[FileClassificationResult],
+    llm_metadata: &LlmMetadataMap,
 ) -> Vec<ReadingGroup> {
     let reading_exts: std::collections::HashSet<&str> = crate::constants::EBOOK_EXTENSIONS
         .iter()
@@ -1984,17 +2096,26 @@ fn detect_reading_groups(
             continue;
         }
 
-        let folder_key = match &file.relative_path {
-            Some(path) => {
-                let parts: Vec<&str> = path.split('/').collect();
-                if parts.len() >= 2 {
-                    // Use first folder segment as series name
-                    parts[0].to_string()
-                } else {
-                    infer_reading_series(&file.filename)
+        // Use LLM series name if available, fall back to folder/filename parsing
+        let folder_key = if let Some(series) = llm_metadata
+            .get(&i)
+            .and_then(|l| l.reading_metadata.as_ref())
+            .and_then(|m| m.series.clone())
+        {
+            series
+        } else {
+            match &file.relative_path {
+                Some(path) => {
+                    let parts: Vec<&str> = path.split('/').collect();
+                    if parts.len() >= 2 {
+                        // Use first folder segment as series name
+                        parts[0].to_string()
+                    } else {
+                        infer_reading_series(&file.filename)
+                    }
                 }
+                None => infer_reading_series(&file.filename),
             }
-            None => infer_reading_series(&file.filename),
         };
         folder_groups.entry(folder_key).or_default().push(i);
     }
@@ -2017,7 +2138,19 @@ fn detect_reading_groups(
                     .unwrap_or("")
                     .to_lowercase();
 
-                let (number, title, is_special) = parse_reading_volume(&file.filename);
+                let (parsed_number, parsed_title, is_special) = parse_reading_volume(&file.filename);
+
+                // Enhance with LLM metadata for volume/title
+                let llm_reading = llm_metadata
+                    .get(&idx)
+                    .and_then(|l| l.reading_metadata.as_ref());
+
+                let number = llm_reading
+                    .and_then(|m| m.volume.clone())
+                    .or(parsed_number);
+                let title = llm_reading
+                    .map(|m| Some(m.title.clone()))
+                    .unwrap_or(parsed_title);
 
                 ReadingVolume {
                     number,

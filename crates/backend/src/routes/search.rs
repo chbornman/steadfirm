@@ -301,11 +301,7 @@ async fn search(
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 /// Check if a service should be searched based on user request and provisioning.
-fn should_search(
-    service: ServiceKind,
-    requested: Option<&[ServiceKind]>,
-    user: &AuthUser,
-) -> bool {
+fn should_search(service: ServiceKind, requested: Option<&[ServiceKind]>, user: &AuthUser) -> bool {
     // If the user specified services, only search those.
     if let Some(requested) = requested {
         if !requested.contains(&service) {
@@ -379,7 +375,9 @@ async fn search_photos(
         })
         .collect::<Vec<_>>();
 
-    let total = resp["assets"]["total"].as_u64().unwrap_or(items.len() as u64) as u32;
+    let total = resp["assets"]["total"]
+        .as_u64()
+        .unwrap_or(items.len() as u64) as u32;
 
     Ok(ServiceSearchResult {
         service: ServiceKind::Photos,
@@ -395,7 +393,11 @@ async fn search_media(
     query: &str,
     limit: u32,
 ) -> Result<ServiceSearchResult, String> {
-    let cred = user.credentials.jellyfin.as_ref().ok_or("not provisioned")?;
+    let cred = user
+        .credentials
+        .jellyfin
+        .as_ref()
+        .ok_or("not provisioned")?;
     let client = JellyfinClient::new(
         &state.config.jellyfin_url,
         &state.config.jellyfin_device_id,
@@ -459,7 +461,9 @@ async fn search_media(
         })
         .collect::<Vec<_>>();
 
-    let total = resp["TotalRecordCount"].as_u64().unwrap_or(items.len() as u64) as u32;
+    let total = resp["TotalRecordCount"]
+        .as_u64()
+        .unwrap_or(items.len() as u64) as u32;
 
     Ok(ServiceSearchResult {
         service: ServiceKind::Media,
@@ -612,7 +616,9 @@ async fn search_reading(
         .iter()
         .take(limit as usize)
         .filter_map(|series| {
-            let id = series["seriesId"].as_u64().or_else(|| series["id"].as_u64())?;
+            let id = series["seriesId"]
+                .as_u64()
+                .or_else(|| series["id"].as_u64())?;
             let name = series["name"].as_str().unwrap_or("Unknown");
             let library_id = series["libraryId"].as_i64().unwrap_or(0);
             let format = series["format"]
@@ -628,9 +634,7 @@ async fn search_reading(
                 } else {
                     Some(format)
                 },
-                image_url: Some(format!(
-                    "/api/v1/reading/{id}/cover?libraryId={library_id}"
-                )),
+                image_url: Some(format!("/api/v1/reading/{id}/cover?libraryId={library_id}")),
                 route: format!("/reading/{id}"),
             })
         })
@@ -638,7 +642,10 @@ async fn search_reading(
 
     // Also include individual chapters/files from "chapters" results.
     if let Some(chapters) = resp["chapters"].as_array() {
-        for ch in chapters.iter().take((limit as usize).saturating_sub(items.len())) {
+        for ch in chapters
+            .iter()
+            .take((limit as usize).saturating_sub(items.len()))
+        {
             if let Some(series_id) = ch["seriesId"].as_u64() {
                 let name = ch["name"].as_str().unwrap_or("Unknown");
                 items.push(SearchResultItem {

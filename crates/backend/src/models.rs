@@ -115,6 +115,10 @@ pub struct Document {
     pub date_created: Option<String>,
     pub date_added: Option<String>,
     pub page_count: Option<u32>,
+    pub mime_type: Option<String>,
+    pub original_file_name: Option<String>,
+    /// Whether Paperless has an archived (PDF) version of the document.
+    pub has_archive_version: bool,
     pub thumbnail_url: String,
     pub preview_url: String,
     pub download_url: String,

@@ -188,26 +188,46 @@ async fn provision_services(
 
     for service in services {
         let result = match service.as_str() {
-            "immich" => provision_and_store(
-                state, user_id, service,
-                provision_immich(state, email, name).await,
-            ).await,
-            "jellyfin" => provision_and_store(
-                state, user_id, service,
-                provision_jellyfin(state, name).await,
-            ).await,
-            "paperless" => provision_and_store(
-                state, user_id, service,
-                provision_paperless(state, email).await,
-            ).await,
-            "audiobookshelf" => provision_and_store(
-                state, user_id, service,
-                provision_audiobookshelf(state, name).await,
-            ).await,
-            "kavita" => provision_and_store(
-                state, user_id, service,
-                provision_kavita(state, name).await,
-            ).await,
+            "immich" => {
+                provision_and_store(
+                    state,
+                    user_id,
+                    service,
+                    provision_immich(state, email, name).await,
+                )
+                .await
+            }
+            "jellyfin" => {
+                provision_and_store(
+                    state,
+                    user_id,
+                    service,
+                    provision_jellyfin(state, name).await,
+                )
+                .await
+            }
+            "paperless" => {
+                provision_and_store(
+                    state,
+                    user_id,
+                    service,
+                    provision_paperless(state, email).await,
+                )
+                .await
+            }
+            "audiobookshelf" => {
+                provision_and_store(
+                    state,
+                    user_id,
+                    service,
+                    provision_audiobookshelf(state, name).await,
+                )
+                .await
+            }
+            "kavita" => {
+                provision_and_store(state, user_id, service, provision_kavita(state, name).await)
+                    .await
+            }
             _ => continue,
         };
         results.push(result);
@@ -490,7 +510,7 @@ async fn provision_kavita(state: &AppState, name: &str) -> Result<(String, Strin
     let username = sanitize_kavita_username(name);
     let email = format!("{username}@steadfirm.local");
 
-    // Login as admin to get a JWT
+    // Login as admin to get a JWT.
     let admin_login = client
         .login(
             &state.config.kavita_admin_username,
@@ -503,31 +523,37 @@ async fn provision_kavita(state: &AppState, name: &str) -> Result<(String, Strin
             "kavita: no token in admin login response"
         )))?;
 
-    // Invite the new user
-    let invite_resp = client
-        .admin_create_user(admin_token, &username, &password)
-        .await?;
-
-    // The invite endpoint may return a confirmation link/token.
-    let invite_link = invite_resp.as_str().unwrap_or_default().to_string();
-
-    // Confirm the invitation to set the user's password
-    if !invite_link.is_empty() {
-        client
-            .confirm_invite(&invite_link, &username, &password)
-            .await?;
+    // If the user already exists (e.g. from a previous failed provisioning
+    // attempt), delete them so we can start fresh.  We cannot reuse a
+    // pending invite because we don't have the original confirmation token.
+    let users = client.get_users(admin_token).await?;
+    let existing = users.as_array().and_then(|arr| {
+        arr.iter()
+            .find(|u| u["email"].as_str() == Some(email.as_str()))
+    });
+    if existing.is_some() {
+        tracing::info!(%email, "kavita: removing stale user before re-provisioning");
+        let _ = client.delete_user(admin_token, &username).await;
     }
 
-    // Login as the new user to get their JWT
-    let user_login = client.login(&username, &password).await?;
-    let user_token = user_login["token"]
-        .as_str()
-        .ok_or(AppError::Internal(anyhow::anyhow!(
-            "kavita: no token in user login response"
-        )))?;
+    // Invite the new user — returns an email confirmation link.
+    let email_link = client.invite_user(admin_token, &email).await?;
 
-    // Create a persistent API key for the user
-    let api_key = client.create_api_key(user_token).await?;
+    // Confirm the invitation to set the user's password.
+    // The confirm-email response is a full login payload that includes
+    // an `apiKey` field, so we can skip the separate login + Plugin call.
+    let confirm_resp = client
+        .confirm_invite(&email_link, &username, &password)
+        .await?;
+
+    let api_key = confirm_resp["apiKey"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| {
+            AppError::Internal(anyhow::anyhow!(
+                "kavita: no apiKey in confirm-email response"
+            ))
+        })?;
 
     tracing::info!(user_id = %email, "provisioned kavita user");
     Ok((email, api_key))

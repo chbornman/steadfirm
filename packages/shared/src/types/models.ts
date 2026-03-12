@@ -84,6 +84,10 @@ export interface Document {
   dateCreated: string;
   dateAdded: string;
   pageCount?: number;
+  mimeType?: string;
+  originalFileName?: string;
+  /** Whether Paperless has an archived (PDF) version of the document. */
+  hasArchiveVersion: boolean;
   thumbnailUrl: string;
   previewUrl: string;
   downloadUrl: string;

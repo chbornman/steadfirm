@@ -19,6 +19,15 @@ export type { MusicQueueProps } from './MusicPlayer';
 export { DocumentViewer } from './DocumentViewer';
 export type { DocumentViewerProps } from './DocumentViewer';
 
+export { PdfViewer } from './DocumentViewer';
+export type { PdfViewerProps } from './DocumentViewer';
+
+export { PlainTextViewer } from './DocumentViewer';
+export type { PlainTextViewerProps } from './DocumentViewer';
+
+export { SpreadsheetViewer } from './DocumentViewer';
+export type { SpreadsheetViewerProps } from './DocumentViewer';
+
 export { DocumentCard } from './DocumentViewer';
 export type { DocumentCardProps } from './DocumentViewer';
 

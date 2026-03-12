@@ -210,10 +210,8 @@ async fn upload_file(
                 .map_err(|e| AppError::Internal(anyhow::anyhow!("write error: {e}")))?;
 
             // Trigger Audiobookshelf library scan so it picks up the new file.
-            let abs_client = AudiobookshelfClient::new(
-                &state.config.audiobookshelf_url,
-                state.http.clone(),
-            );
+            let abs_client =
+                AudiobookshelfClient::new(&state.config.audiobookshelf_url, state.http.clone());
             if let Ok((library_id, _)) = abs_client
                 .get_book_library_info(&state.config.audiobookshelf_admin_token)
                 .await

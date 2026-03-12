@@ -32,3 +32,6 @@ web/.next/
 
 # Logs
 *.log
+
+# Seed media (large local files for dev seeding)
+infra/seed-media/

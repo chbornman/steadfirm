@@ -9,6 +9,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_DIR="$SCRIPT_DIR"
 
+trap 'echo ""; echo "Interrupted."; exit 130' INT TERM
+
 echo "=== Stopping all containers ==="
 docker compose -f "$COMPOSE_DIR/docker-compose.yml" -f "$COMPOSE_DIR/docker-compose.dev.yml" down --timeout 10 2>/dev/null || true
 

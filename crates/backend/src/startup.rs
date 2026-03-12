@@ -455,10 +455,7 @@ async fn init_kavita(
 
     // Create a library for ebooks/comics if none exists.
     let libraries = client.get_libraries(&api_key).await?;
-    let lib_count = libraries
-        .as_array()
-        .map(|a| a.len())
-        .unwrap_or(0);
+    let lib_count = libraries.as_array().map(|a| a.len()).unwrap_or(0);
     if lib_count == 0 {
         let resp = http
             .post(format!("{base_url}/api/Library/create"))

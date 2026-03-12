@@ -42,17 +42,35 @@ header() { echo -e "\n${BOLD}${CYAN}=== $* ===${NC}"; }
 
 # ── Cleanup on exit ──────────────────────────────────────────────────
 PIDS=()
+CLEANING_UP=0
 
 cleanup() {
+    # Guard against re-entrancy from repeated Ctrl+C
+    if [ "$CLEANING_UP" -eq 1 ]; then
+        return
+    fi
+    CLEANING_UP=1
+
     echo ""
     info "Shutting down..."
+
+    # Kill entire process groups so child processes (bun, cargo, etc.)
+    # inside the subshell pipelines are also terminated.
     for pid in "${PIDS[@]}"; do
-        kill "$pid" 2>/dev/null || true
+        kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
     done
+
+    # Brief grace period, then force-kill stragglers
+    sleep 0.5
+    for pid in "${PIDS[@]}"; do
+        kill -9 -- -"$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null || true
+    done
+
     wait 2>/dev/null || true
     ok "All processes stopped"
 }
-trap cleanup EXIT INT TERM
+trap 'cleanup; exit 0' INT TERM
+trap cleanup EXIT
 
 # ── Step 1: Reset ─────────────────────────────────────────────────────
 
@@ -124,15 +142,15 @@ kill_port 3002
 kill_port 5173
 
 header "Starting BetterAuth"
-(cd "$REPO_ROOT/services/betterauth" && bun run dev) 2>&1 | sed 's/^/  [betterauth] /' &
+setsid bash -c "cd '$REPO_ROOT/services/betterauth' && bun run dev" 2>&1 | sed 's/^/  [betterauth] /' &
 PIDS+=($!)
 
 header "Starting Backend"
-(cd "$REPO_ROOT" && cargo run -p steadfirm-backend) 2>&1 | sed 's/^/  [backend]    /' &
+setsid bash -c "cd '$REPO_ROOT' && cargo run -p steadfirm-backend" 2>&1 | sed 's/^/  [backend]    /' &
 PIDS+=($!)
 
 header "Starting Web frontend"
-(cd "$REPO_ROOT/web" && bun run dev) 2>&1 | sed 's/^/  [web]        /' &
+setsid bash -c "cd '$REPO_ROOT/web' && bun run dev" 2>&1 | sed 's/^/  [web]        /' &
 PIDS+=($!)
 
 # ── Step 4: Wait for services to be ready ─────────────────────────────
@@ -180,6 +198,8 @@ echo ""
 echo -e "  Press ${BOLD}Ctrl+C${NC} to stop everything"
 echo ""
 
-# Wait for any background process to exit (keeps script alive)
-wait -n "${PIDS[@]}" 2>/dev/null || true
-warn "A service exited unexpectedly"
+# Wait forever — Ctrl+C triggers the INT trap which calls cleanup + exit.
+# `wait` is interrupted by signals, so loop to keep alive.
+while true; do
+    wait 2>/dev/null || true
+done

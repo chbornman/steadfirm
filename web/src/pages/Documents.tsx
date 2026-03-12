@@ -319,12 +319,16 @@ export function DocumentsPage() {
         {selectedDoc && (
           <DocumentViewer
             previewUrl={selectedDoc.previewUrl}
+            downloadUrl={selectedDoc.downloadUrl}
             document={{
               title: selectedDoc.title,
               correspondent: selectedDoc.correspondent,
               tags: selectedDoc.tags,
               dateCreated: selectedDoc.dateCreated,
               pageCount: selectedDoc.pageCount,
+              mimeType: selectedDoc.mimeType,
+              originalFileName: selectedDoc.originalFileName,
+              hasArchiveVersion: selectedDoc.hasArchiveVersion,
             }}
             onDownload={handleDownload}
           />

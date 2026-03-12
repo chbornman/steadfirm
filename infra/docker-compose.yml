@@ -161,7 +161,7 @@ services:
       - steadfirm
 
   # ──────────────────────────────────────────────
-  # Documents — Paperless-ngx
+  # Documents — Paperless-ngx + Tika/Gotenberg
   # ──────────────────────────────────────────────
 
   paperless:
@@ -177,6 +177,10 @@ services:
       PAPERLESS_URL: http://paperless:8000
       PAPERLESS_ADMIN_USER: admin
       PAPERLESS_ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}
+      # Enable Tika/Gotenberg for office document conversion (docx, xlsx, pptx, odt, etc.)
+      PAPERLESS_TIKA_ENABLED: 1
+      PAPERLESS_TIKA_ENDPOINT: http://tika:9998
+      PAPERLESS_TIKA_GOTENBERG_ENDPOINT: http://gotenberg:3000
     volumes:
       - paperless_data:/usr/src/paperless/data
       - paperless_media:/usr/src/paperless/media
@@ -186,7 +190,29 @@ services:
         condition: service_healthy
       valkey:
         condition: service_healthy
+      gotenberg:
+        condition: service_started
+      tika:
+        condition: service_started
     # No host ports — only reachable by steadfirm-backend via internal network
+    networks:
+      - steadfirm
+
+  gotenberg:
+    image: docker.io/gotenberg/gotenberg:8.21.0
+    restart: unless-stopped
+    # Gotenberg runs Chromium + LibreOffice to convert office docs to PDF.
+    # Disable unused modules to reduce attack surface and resource usage.
+    command:
+      - gotenberg
+      - --chromium-disable-javascript=true
+      - --chromium-allow-list=file:///tmp/.*
+    networks:
+      - steadfirm
+
+  tika:
+    image: docker.io/apache/tika:3.1.0.0
+    restart: unless-stopped
     networks:
       - steadfirm
 

@@ -234,36 +234,44 @@ Run as part of the deploy pipeline or as a Docker Compose `init` container. Must
 
 ---
 
-## Smart Upload Enhancements
+## Smart Upload & Metadata Enhancements
 
-The core smart upload pipelines (Audiobookshelf, Jellyfin TV/Movies/Music, Kavita Reading) are complete. These enhancements would improve accuracy and user experience.
+The core smart upload pipelines (Audiobookshelf, Jellyfin TV/Movies/Music, Kavita Reading) are complete. These enhancements would improve accuracy and user experience. The overall metadata enrichment architecture is specified in [specs/METADATA.md](specs/METADATA.md).
 
-### TMDb / TVDB Lookup for Movies & TV Shows
+### Pre-Upload Enrichment (Drop Zone)
 
-**Problem:** Movie and TV show naming relies entirely on filename parsing. Misspelled titles, missing years, or non-standard naming produce incorrect folder structures that Jellyfin can't match.
+These items improve what Steadfirm extracts from files before sending them to backing services:
 
-**Solution:** After heuristic detection, query TMDb (movies) or TVDB (TV shows) to validate and enrich metadata — correct title spelling, fill in missing years, fetch episode titles, and confirm season/episode numbering. Show matched results in the review panel so users can confirm or pick an alternative match.
+- **Music probing via ffprobe** — Reuse the existing ffprobe service (already used for audiobook ID3 extraction) to probe music files. Extract artist, album, track number, title, year, and genre from ID3/Vorbis tags. Prefer tag metadata over filename-inferred metadata in the review panel.
+- **Immich album creation from folders** — Infer album names from folder structure (e.g. `Vacation 2024/` → create Immich album). Pass file timestamps for correct timeline placement.
+- **Paperless tag/correspondent suggestions** — Suggest tags from filename keywords and folder names. Infer correspondent from filename patterns (e.g. `Invoice - Acme Corp.pdf` → correspondent "Acme Corp"). Pass as upload metadata fields.
 
-### Music Probing via ffprobe
+### Post-Upload Native Enrichment (Metadata Jobs)
 
-**Problem:** Music track metadata (artist, album, track number, year) is inferred from folder structure and filenames. Files with proper ID3/Vorbis tags have richer metadata that goes unused.
+These items proxy each service's own metadata matching capabilities through Steadfirm's UI:
 
-**Solution:** Reuse the existing ffprobe service (already used for audiobook ID3 extraction) to probe music files. Extract artist, album, track number, title, year, and genre from tags. Prefer tag metadata over filename-inferred metadata in the review panel, with fallback to folder heuristics when tags are missing.
+- **Jellyfin refresh/match proxy** — Expose `POST /Items/{id}/Refresh` and `POST /Items/RemoteSearch/{type}` through Steadfirm endpoints so users can trigger metadata refresh and manually re-identify mismatched movies/shows without leaving Steadfirm.
+- **ABS match proxy** — Expose `POST /api/items/{id}/match` and `POST /api/libraries/{id}/matchall` for single-item and bulk audiobook matching (Audible, Google Books, Open Library).
+- **Enrichment job queue** — Implement the `enrichment_jobs` table and background worker (see METADATA.md §Job Queue) so metadata operations are trackable, retryable, and non-blocking.
+- **Bulk actions in UI** — Multi-select items in library views for batch refresh/match operations.
 
-### Immich Photo Enhancements (EXIF & Albums)
+---
 
-**Problem:** Photos uploaded via the drop zone are sent to Immich as-is. No EXIF date extraction for organizing by date, no album creation from folder structure, and no deduplication check.
+## Missing Specifications
 
-**Solution:**
-1. Extract EXIF date-taken from images to display in the review panel and potentially group by date
-2. Infer album names from folder structure (e.g. `Vacation 2024/` → create Immich album)
-3. Check for duplicate photos before uploading (perceptual hash or EXIF fingerprint)
+Specs that should be written as the corresponding features mature. See `specs/README.md` for the full index.
 
-### Paperless-ngx Enhancements (Tags & Correspondents)
+### Medium Priority
 
-**Problem:** Documents uploaded to Paperless are sent without any pre-filled metadata. Users must manually tag and assign correspondents after upload.
+- **Tauri App (`specs/APP.md`)** — Tauri 2 desktop + mobile client, Rust sidecar code, SQLite local cache, offline-first sync strategy, native features (file picker, notifications, system tray), how it differs from web/.
+- **Service Proxy (`specs/PROXY.md`)** — How the backend translates unified API calls to per-service APIs, credential injection, response normalization, binary/streaming proxy, pagination translation, the planned signed-URL migration.
+- **API Reference (`specs/API.md`)** — Complete endpoint catalog with request/response schemas, auth requirements, error codes — a single place to look up any endpoint (currently spread across BACKEND.md sections).
+- **Database (`specs/DATABASE.md`)** — Postgres schema (Steadfirm's own tables), migrations strategy, SQLx usage patterns, connection pooling, which tables belong to which service, BetterAuth schema coexistence.
 
-**Solution:**
-1. Suggest tags based on filename keywords, folder names, or document content (if OCR is available client-side)
-2. Infer correspondent from filename patterns (e.g. `Invoice - Acme Corp.pdf` → correspondent "Acme Corp")
-3. Show suggested tags and correspondent in the review panel for user confirmation before upload
+### Lower Priority
+
+- **Theme & Design System (`specs/DESIGN.md`)** — Design tokens, color system, typography, spacing scale, component conventions, dark mode strategy, how `@steadfirm/theme` and `@steadfirm/ui` packages work, Ant Design customization.
+- **Backup & Recovery (`specs/BACKUP.md`)** — Backup strategy for Postgres, media volumes, config; restore procedures, offsite sync, WAL archiving, testing strategy.
+- **Security (`specs/SECURITY.md`)** — Threat model, trust boundaries, network segmentation (internal-only services), session security, CSRF/XSS mitigations, rate limiting, input validation, secrets handling.
+- **Deployment & Ops (`specs/DEPLOYMENT.md`)** — How to deploy from scratch, upgrade procedures, monitoring, log aggregation, alerting, domain/DNS setup, SSL/TLS.
+- **Testing (`specs/TESTING.md`)** — Testing strategy per crate/package, integration test setup, how to test against real services, CI pipeline.

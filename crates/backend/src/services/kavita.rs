@@ -48,11 +48,7 @@ impl KavitaClient {
     /// Search across all libraries for series matching a query string.
     pub async fn search(&self, api_key: &str, query: &str) -> Result<Value, AppError> {
         let resp = self
-            .request_api_key(
-                reqwest::Method::GET,
-                "/api/Search/search",
-                api_key,
-            )
+            .request_api_key(reqwest::Method::GET, "/api/Search/search", api_key)
             .query(&[("queryString", query)])
             .send()
             .await?;
@@ -412,36 +408,64 @@ impl KavitaClient {
         Ok(resp.json().await?)
     }
 
-    /// Create a new user (admin JWT required).
-    /// Kavita's invite endpoint creates a user and returns a link,
-    /// but we use the direct admin creation endpoint.
-    pub async fn admin_create_user(
-        &self,
-        admin_token: &str,
-        username: &str,
-        _password: &str,
-    ) -> Result<Value, AppError> {
+    /// Invite a new user (admin JWT required).
+    ///
+    /// Returns the email confirmation link from which the confirmation
+    /// token can be extracted.  Roles should be empty — Kavita assigns
+    /// `Pleb` + `Login` automatically during confirmation.
+    pub async fn invite_user(&self, admin_token: &str, email: &str) -> Result<String, AppError> {
         let resp = self
             .request(reqwest::Method::POST, "/api/Account/invite", admin_token)
             .json(&serde_json::json!({
-                "email": format!("{username}@steadfirm.local"),
-                "roles": ["Pleb"],
+                "email": email,
+                "roles": [],
                 "libraries": [],
                 "ageRestriction": { "ageRating": 0, "includeUnknowns": true },
             }))
             .send()
             .await?;
         let resp = check_response("kavita", resp).await?;
-        Ok(resp.json().await?)
+        let body: Value = resp.json().await?;
+
+        // Response: { "emailLink": "http://…/confirm-email?token=…&email=…", … }
+        body["emailLink"]
+            .as_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| {
+                AppError::Internal(anyhow::anyhow!(
+                    "kavita invite: missing emailLink in response"
+                ))
+            })
     }
 
-    /// Confirm an invited user by setting their password via the invite URL.
+    /// Confirm an invited user by setting their password.
+    ///
+    /// `email_link` is the full URL returned by [`invite_user`].  The
+    /// confirmation token is extracted from its query string automatically.
+    ///
+    /// On success Kavita returns a full login response that includes an
+    /// `apiKey` field, so no separate login + Plugin/authenticate call is
+    /// needed.
     pub async fn confirm_invite(
         &self,
-        invite_url: &str,
+        email_link: &str,
         username: &str,
         password: &str,
     ) -> Result<Value, AppError> {
+        // Extract the `token` query parameter from the confirmation URL.
+        let token = url::Url::parse(email_link)
+            .ok()
+            .and_then(|u| {
+                u.query_pairs()
+                    .find(|(k, _)| k == "token")
+                    .map(|(_, v)| v.to_string())
+            })
+            .ok_or_else(|| {
+                AppError::Internal(anyhow::anyhow!(
+                    "kavita confirm: failed to extract token from email link"
+                ))
+            })?;
+
         let resp = self
             .http
             .post(format!("{}/api/Account/confirm-email", self.base_url))
@@ -449,12 +473,37 @@ impl KavitaClient {
                 "username": username,
                 "password": password,
                 "email": format!("{username}@steadfirm.local"),
-                "token": invite_url,
+                "token": token,
             }))
             .send()
             .await?;
         let resp = check_response("kavita", resp).await?;
         Ok(resp.json().await?)
+    }
+
+    /// List all users (admin JWT required).
+    pub async fn get_users(&self, admin_token: &str) -> Result<Value, AppError> {
+        let resp = self
+            .request(reqwest::Method::GET, "/api/Users", admin_token)
+            .send()
+            .await?;
+        let resp = check_response("kavita", resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    /// Delete a user by username (admin JWT required).
+    pub async fn delete_user(&self, admin_token: &str, username: &str) -> Result<(), AppError> {
+        let encoded = urlencoding::encode(username);
+        let resp = self
+            .request(
+                reqwest::Method::DELETE,
+                &format!("/api/Users/delete-user?username={encoded}"),
+                admin_token,
+            )
+            .send()
+            .await?;
+        check_response("kavita", resp).await?;
+        Ok(())
     }
 
     /// Create a persistent API key for a user (requires user's JWT token).

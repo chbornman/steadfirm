@@ -63,7 +63,30 @@ Return a JSON object with a `files` array. For each file provide:
 - `service`: one of "photos", "media", "documents", "audiobooks", "reading", "files"
 - `confidence`: 0.0 to 1.0
 - `reasoning`: brief explanation (1 sentence)
+
+### Brand media metadata extraction
+
+For brand media (movies, TV shows, music, audiobooks, comics, manga, ebooks), extract structured metadata so the platform can organize files into the correct folder structure for each service. Personal media (photos, home videos, documents) should NOT have metadata extracted — those flow through as-is.
+
+Include the appropriate metadata field based on the service classification:
+
 - `audiobook_metadata`: if service is "audiobooks", include `title`, `author` (optional), `series` (optional). Otherwise null.
+- `media_metadata`: if service is "media", include structured metadata. Otherwise null.
+  - `media_type`: one of "movie", "tv_show", "music"
+  - `title`: clean title (strip scene tags, dots, underscores — e.g. "The.Shawshank.Redemption.1994.REMASTERED.1080p.BluRay.x265-RARBG.mkv" → "The Shawshank Redemption")
+  - `year`: release year if identifiable (optional)
+  - `season`: for TV shows, the season number (optional)
+  - `episode`: for TV shows, the episode number (optional)
+  - `episode_end`: for multi-episode files like S01E01-E03, the end episode (optional)
+  - `artist`: for music, the artist/band name (optional)
+  - `album`: for music, the album name (optional)
+- `reading_metadata`: if service is "reading", include structured metadata. Otherwise null.
+  - `title`: clean title of the book, comic, or manga
+  - `series`: series name if part of a series (optional)
+  - `volume`: volume or issue number as a string (optional)
+  - `reading_type`: one of "manga", "comic", "ebook" (optional)
+
+**Important**: For brand media, the clean title is critical. Strip scene release tags, dots-as-spaces, underscores, codec info, resolution tags, and release group names. Extract the human-readable title that would appear on a bookshelf or in a streaming catalog.
 
 Output ONLY the raw JSON — no markdown fencing, no explanation."#;
 
