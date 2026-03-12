@@ -35,6 +35,7 @@ pub async fn load_admin_credentials(db: &PgPool, mut config: Config) -> anyhow::
             "jellyfin" => config.jellyfin_admin_token = row.admin_token.clone(),
             "paperless" => config.paperless_admin_token = row.admin_token.clone(),
             "audiobookshelf" => config.audiobookshelf_admin_token = row.admin_token.clone(),
+            "kavita" => config.kavita_admin_api_key = row.admin_token.clone(),
             _ => {}
         }
     }
@@ -132,6 +133,25 @@ pub async fn initialize_services(
                 tracing::info!("initialized audiobookshelf");
             }
             Err(e) => tracing::error!(error = %e, "failed to initialize audiobookshelf"),
+        }
+    }
+
+    // --- Kavita ---
+    if config.kavita_admin_api_key.is_empty() {
+        match init_kavita(
+            http,
+            &config.kavita_url,
+            &config.kavita_admin_username,
+            admin_password,
+        )
+        .await
+        {
+            Ok((user_id, api_key)) => {
+                store_admin_cred(db, "kavita", &user_id, &api_key).await?;
+                config.kavita_admin_api_key = api_key;
+                tracing::info!("initialized kavita");
+            }
+            Err(e) => tracing::error!(error = %e, "failed to initialize kavita"),
         }
     }
 
@@ -380,6 +400,82 @@ async fn init_audiobookshelf(
     }
 
     Ok((user_id, token))
+}
+
+// ─── Kavita ──────────────────────────────────────────────────────────
+
+async fn init_kavita(
+    http: &reqwest::Client,
+    base_url: &str,
+    admin_username: &str,
+    password: &str,
+) -> anyhow::Result<(String, String)> {
+    let client = KavitaClient::new(base_url, http.clone());
+    let email = format!("{admin_username}@steadfirm.local");
+
+    // Try to login first — admin may already exist from a previous boot.
+    let login_result = client.login(admin_username, password).await;
+
+    let api_key = match login_result {
+        Ok(resp) => {
+            let token = resp["token"]
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("no token from kavita login"))?;
+
+            // For an existing admin, we need to create an API key via Plugin/authenticate.
+            client.create_api_key(token).await?
+        }
+        Err(_) => {
+            // First boot — register the admin user.
+            // The registration response includes an `apiKey` field directly,
+            // so we don't need a separate Plugin/authenticate call.
+            let resp = http
+                .post(format!("{base_url}/api/Account/register"))
+                .json(&json!({
+                    "username": admin_username,
+                    "password": password,
+                    "email": email,
+                }))
+                .send()
+                .await?;
+
+            let status = resp.status();
+            let body: serde_json::Value = resp.json().await.unwrap_or_default();
+
+            if !status.is_success() {
+                anyhow::bail!("kavita admin registration failed: {body}");
+            }
+
+            body["apiKey"]
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("no apiKey from kavita registration response"))?
+                .to_string()
+        }
+    };
+
+    // Create a library for ebooks/comics if none exists.
+    let libraries = client.get_libraries(&api_key).await?;
+    let lib_count = libraries
+        .as_array()
+        .map(|a| a.len())
+        .unwrap_or(0);
+    if lib_count == 0 {
+        let resp = http
+            .post(format!("{base_url}/api/Library/create"))
+            .header("x-api-key", &api_key)
+            .json(&json!({
+                "name": "Reading",
+                "type": 2,
+                "folders": ["/books"],
+            }))
+            .send()
+            .await?;
+        if resp.status().is_success() {
+            tracing::info!("created kavita library");
+        }
+    }
+
+    Ok((admin_username.to_string(), api_key))
 }
 
 // ─── DB helpers ──────────────────────────────────────────────────────

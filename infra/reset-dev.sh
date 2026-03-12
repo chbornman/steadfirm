@@ -16,7 +16,8 @@ echo "=== Removing all volumes ==="
 docker compose -f "$COMPOSE_DIR/docker-compose.yml" -f "$COMPOSE_DIR/docker-compose.dev.yml" down -v --timeout 10 2>/dev/null || true
 
 echo "=== Cleaning local file storage ==="
-rm -rf /tmp/steadfirm-files 2>/dev/null || true
+rm -rf /tmp/steadfirm-files /tmp/steadfirm-media /tmp/steadfirm-audiobooks /tmp/steadfirm-reading 2>/dev/null || true
+mkdir -p /tmp/steadfirm-files /tmp/steadfirm-media /tmp/steadfirm-audiobooks /tmp/steadfirm-reading
 
 echo "=== Starting fresh ==="
 docker compose -f "$COMPOSE_DIR/docker-compose.yml" -f "$COMPOSE_DIR/docker-compose.dev.yml" up -d

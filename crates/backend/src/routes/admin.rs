@@ -4,7 +4,6 @@ use serde_json::{json, Value};
 
 use crate::auth::AuthUser;
 use crate::error::AppError;
-use crate::provisioning;
 use crate::AppState;
 
 #[derive(sqlx::FromRow)]
@@ -26,6 +25,8 @@ struct ProvisionRequest {
     user_id: Option<String>,
 }
 
+/// Admin endpoint to manually trigger provisioning for a user.
+/// Delegates to the same ProvisioningService used by the webhook.
 async fn provision_user(
     State(state): State<AppState>,
     auth_user: AuthUser,
@@ -40,11 +41,15 @@ async fn provision_user(
             .await?
             .ok_or(AppError::NotFound("user not found".into()))?;
 
-    let results =
-        provisioning::provision_all(&state, target_user_id, &user_row.name, &user_row.email).await;
+    let spawned = state.provisioner.ensure_provisioned(
+        state.clone(),
+        target_user_id.to_string(),
+        user_row.name,
+        user_row.email,
+    );
 
     Ok(Json(json!({
         "userId": target_user_id,
-        "services": provisioning::results_to_json(&results),
+        "status": if spawned { "provisioning" } else { "already_in_progress" },
     })))
 }

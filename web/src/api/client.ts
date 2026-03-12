@@ -43,7 +43,12 @@ export const api = ky.create({
         log.error('api error', ctx);
 
         if (response.status === 401) {
-          window.location.href = '/login';
+          // Don't redirect if already on a guest page — avoids infinite loops
+          // when unauthenticated components fire API calls on /login or /signup.
+          const path = window.location.pathname;
+          if (path !== '/login' && path !== '/signup') {
+            window.location.href = '/login';
+          }
         }
 
         if (response.status === 403) {

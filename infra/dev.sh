@@ -69,13 +69,15 @@ fi
 
 header "Waiting for Docker services"
 
-DC="docker compose -f $SCRIPT_DIR/docker-compose.yml -f $SCRIPT_DIR/docker-compose.dev.yml"
+dc() {
+    docker compose -f "$SCRIPT_DIR/docker-compose.yml" -f "$SCRIPT_DIR/docker-compose.dev.yml" "$@"
+}
 
 wait_for_container() {
     local name="$1" timeout="${2:-120}" elapsed=0
     while [ $elapsed -lt $timeout ]; do
         local health
-        health=$($DC ps --format "{{.Health}}" "$name" 2>/dev/null | head -1)
+        health=$(dc ps --format "{{.Health}}" "$name" 2>/dev/null | head -1)
         # Containers without healthchecks report empty — treat as ready
         if [ -z "$health" ] || [ "$health" = "healthy" ]; then
             ok "$name is ready"
@@ -83,6 +85,7 @@ wait_for_container() {
         fi
         sleep 2
         elapsed=$((elapsed + 2))
+        info "Waiting for $name... (${elapsed}s)"
     done
     warn "$name did not become healthy within ${timeout}s"
     return 1
@@ -98,6 +101,27 @@ for svc in immich-server jellyfin paperless audiobookshelf kavita; do
 done
 
 # ── Step 3: Start local services ──────────────────────────────────────
+
+# Kill any stale processes from previous runs
+kill_port() {
+    local port="$1"
+    local pids
+    pids=$(lsof -ti :"$port" 2>/dev/null || true)
+    if [ -n "$pids" ]; then
+        warn "Killing stale process(es) on port $port (PIDs: $pids)"
+        echo "$pids" | xargs kill -9 2>/dev/null || true
+        # Wait until the port is actually free
+        local attempts=0
+        while lsof -ti :"$port" >/dev/null 2>&1 && [ $attempts -lt 20 ]; do
+            sleep 0.25
+            attempts=$((attempts + 1))
+        done
+    fi
+}
+
+kill_port 3001
+kill_port 3002
+kill_port 5173
 
 header "Starting BetterAuth"
 (cd "$REPO_ROOT/services/betterauth" && bun run dev) 2>&1 | sed 's/^/  [betterauth] /' &

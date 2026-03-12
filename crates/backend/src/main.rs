@@ -27,6 +27,7 @@ pub struct AppState {
     pub config: config::Config,
     pub http: reqwest::Client,
     pub ai: Arc<tokio::sync::RwLock<services::AiClassifier>>,
+    pub provisioner: provisioning::ProvisioningService,
 }
 
 #[tokio::main]
@@ -85,6 +86,7 @@ async fn main() -> anyhow::Result<()> {
         config: config.clone(),
         http,
         ai: Arc::new(tokio::sync::RwLock::new(ai)),
+        provisioner: provisioning::ProvisioningService::new(),
     };
 
     let app = Router::new()

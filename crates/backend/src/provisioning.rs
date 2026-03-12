@@ -1,9 +1,15 @@
+use std::collections::HashSet;
+use std::sync::Arc;
+
 use rand::Rng;
 use serde_json::{json, Value};
+use tokio::sync::Mutex;
 
 use crate::error::AppError;
 use crate::services::*;
 use crate::AppState;
+
+// ─── Public types ────────────────────────────────────────────────────
 
 /// Result of provisioning a single service.
 #[derive(Debug)]
@@ -14,191 +20,115 @@ pub struct ServiceProvisionResult {
     pub error: Option<String>,
 }
 
-/// Provision a user into all four services.
-/// Returns partial results — each service is independent.
-pub async fn provision_all(
-    state: &AppState,
-    user_id: &str,
-    name: &str,
-    email: &str,
-) -> Vec<ServiceProvisionResult> {
-    let mut results = Vec::new();
-
-    // --- Immich ---
-    match provision_immich(state, email, name).await {
-        Ok((service_user_id, api_key)) => {
-            let stored =
-                store_credential(&state.db, user_id, "immich", &service_user_id, &api_key).await;
-            match stored {
-                Ok(()) => results.push(ServiceProvisionResult {
-                    service: "immich".into(),
-                    status: "provisioned".into(),
-                    user_id: Some(service_user_id),
-                    error: None,
-                }),
-                Err(e) => results.push(ServiceProvisionResult {
-                    service: "immich".into(),
-                    status: "failed".into(),
-                    user_id: None,
-                    error: Some(e.to_string()),
-                }),
-            }
-        }
-        Err(e) => {
-            tracing::error!(error = %e, "failed to provision immich");
-            results.push(ServiceProvisionResult {
-                service: "immich".into(),
-                status: "failed".into(),
-                user_id: None,
-                error: Some(e.to_string()),
-            });
-        }
-    }
-
-    // --- Jellyfin ---
-    match provision_jellyfin(state, name).await {
-        Ok((service_user_id, token)) => {
-            let stored =
-                store_credential(&state.db, user_id, "jellyfin", &service_user_id, &token).await;
-            match stored {
-                Ok(()) => results.push(ServiceProvisionResult {
-                    service: "jellyfin".into(),
-                    status: "provisioned".into(),
-                    user_id: Some(service_user_id),
-                    error: None,
-                }),
-                Err(e) => results.push(ServiceProvisionResult {
-                    service: "jellyfin".into(),
-                    status: "failed".into(),
-                    user_id: None,
-                    error: Some(e.to_string()),
-                }),
-            }
-        }
-        Err(e) => {
-            tracing::error!(error = %e, "failed to provision jellyfin");
-            results.push(ServiceProvisionResult {
-                service: "jellyfin".into(),
-                status: "failed".into(),
-                user_id: None,
-                error: Some(e.to_string()),
-            });
-        }
-    }
-
-    // --- Paperless ---
-    match provision_paperless(state, email).await {
-        Ok((service_user_id, token)) => {
-            let stored =
-                store_credential(&state.db, user_id, "paperless", &service_user_id, &token).await;
-            match stored {
-                Ok(()) => results.push(ServiceProvisionResult {
-                    service: "paperless".into(),
-                    status: "provisioned".into(),
-                    user_id: Some(service_user_id),
-                    error: None,
-                }),
-                Err(e) => results.push(ServiceProvisionResult {
-                    service: "paperless".into(),
-                    status: "failed".into(),
-                    user_id: None,
-                    error: Some(e.to_string()),
-                }),
-            }
-        }
-        Err(e) => {
-            tracing::error!(error = %e, "failed to provision paperless");
-            results.push(ServiceProvisionResult {
-                service: "paperless".into(),
-                status: "failed".into(),
-                user_id: None,
-                error: Some(e.to_string()),
-            });
-        }
-    }
-
-    // --- Audiobookshelf ---
-    match provision_audiobookshelf(state, name).await {
-        Ok((service_user_id, token)) => {
-            let stored = store_credential(
-                &state.db,
-                user_id,
-                "audiobookshelf",
-                &service_user_id,
-                &token,
-            )
-            .await;
-            match stored {
-                Ok(()) => results.push(ServiceProvisionResult {
-                    service: "audiobookshelf".into(),
-                    status: "provisioned".into(),
-                    user_id: Some(service_user_id),
-                    error: None,
-                }),
-                Err(e) => results.push(ServiceProvisionResult {
-                    service: "audiobookshelf".into(),
-                    status: "failed".into(),
-                    user_id: None,
-                    error: Some(e.to_string()),
-                }),
-            }
-        }
-        Err(e) => {
-            tracing::error!(error = %e, "failed to provision audiobookshelf");
-            results.push(ServiceProvisionResult {
-                service: "audiobookshelf".into(),
-                status: "failed".into(),
-                user_id: None,
-                error: Some(e.to_string()),
-            });
-        }
-    }
-
-    // --- Kavita ---
-    match provision_kavita(state, name).await {
-        Ok((service_user_id, api_key)) => {
-            let stored =
-                store_credential(&state.db, user_id, "kavita", &service_user_id, &api_key).await;
-            match stored {
-                Ok(()) => results.push(ServiceProvisionResult {
-                    service: "kavita".into(),
-                    status: "provisioned".into(),
-                    user_id: Some(service_user_id),
-                    error: None,
-                }),
-                Err(e) => results.push(ServiceProvisionResult {
-                    service: "kavita".into(),
-                    status: "failed".into(),
-                    user_id: None,
-                    error: Some(e.to_string()),
-                }),
-            }
-        }
-        Err(e) => {
-            tracing::error!(error = %e, "failed to provision kavita");
-            results.push(ServiceProvisionResult {
-                service: "kavita".into(),
-                status: "failed".into(),
-                user_id: None,
-                error: Some(e.to_string()),
-            });
-        }
-    }
-
-    results
+/// Centralized provisioning coordinator.
+///
+/// Owns a per-user lock to ensure only one provisioning flow runs at a
+/// time. Both the webhook and the `/users/me` fallback call the same
+/// method — [`ensure_provisioned`] — which spawns a background task if
+/// (and only if) provisioning isn't already running for that user.
+///
+/// Callers never block on provisioning. The client polls `/users/me`
+/// until all services report as ready.
+#[derive(Clone)]
+pub struct ProvisioningService {
+    in_progress: Arc<Mutex<HashSet<String>>>,
 }
 
-/// Provision with retries for failed services.
-/// Used by the webhook handler where services may still be booting.
-/// Retries up to `max_retries` times with exponential backoff (2s, 4s, 8s, ...).
-pub async fn provision_all_with_retry(
+impl Default for ProvisioningService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ProvisioningService {
+    pub fn new() -> Self {
+        Self {
+            in_progress: Arc::new(Mutex::new(HashSet::new())),
+        }
+    }
+
+    /// Ensure a user is being provisioned. Spawns a background task with
+    /// retries if not already in progress. Safe to call multiple times —
+    /// subsequent calls are no-ops while provisioning is running.
+    ///
+    /// Returns `true` if a new provisioning task was spawned, `false` if
+    /// one was already running.
+    pub fn ensure_provisioned(
+        &self,
+        state: AppState,
+        user_id: String,
+        name: String,
+        email: String,
+    ) -> bool {
+        let lock = self.in_progress.clone();
+
+        // Fast check — don't even spawn if already running.
+        // We can't .await inside this method since we want it sync-compatible
+        // for the webhook path, so use try_lock for the quick check.
+        if let Ok(set) = lock.try_lock() {
+            if set.contains(&user_id) {
+                tracing::debug!(user_id = %user_id, "provisioning already in progress");
+                return false;
+            }
+        }
+
+        let lock_for_task = lock.clone();
+
+        tokio::spawn(async move {
+            // Acquire lock properly inside the async context.
+            {
+                let mut set = lock_for_task.lock().await;
+                if set.contains(&user_id) {
+                    tracing::debug!(user_id = %user_id, "provisioning already in progress");
+                    return;
+                }
+                set.insert(user_id.clone());
+            }
+
+            let results = provision_with_retry(
+                &state,
+                &user_id,
+                &name,
+                &email,
+                state.config.provision_max_retries,
+            )
+            .await;
+
+            let failed: Vec<_> = results.iter().filter(|r| r.status == "failed").collect();
+            if failed.is_empty() {
+                tracing::info!(user_id = %user_id, "all services provisioned");
+            } else {
+                for r in &failed {
+                    tracing::error!(
+                        user_id = %user_id,
+                        service = %r.service,
+                        error = r.error.as_deref().unwrap_or("unknown"),
+                        "provisioning failed after retries"
+                    );
+                }
+            }
+
+            // Release the lock.
+            lock_for_task.lock().await.remove(&user_id);
+        });
+
+        true
+    }
+}
+
+// ─── Provisioning orchestration (private) ────────────────────────────
+
+/// Provision with retries for failed services. Retries with exponential
+/// backoff (2s, 4s, 8s, ...) up to `max_retries` times.
+async fn provision_with_retry(
     state: &AppState,
     user_id: &str,
     name: &str,
     email: &str,
     max_retries: u32,
 ) -> Vec<ServiceProvisionResult> {
-    let mut results = provision_all(state, user_id, name, email).await;
+    let all_services: Vec<String> = ALL_SERVICES.iter().map(|s| s.to_string()).collect();
+    let mut results = provision_services(state, user_id, name, email, &all_services).await;
 
     for attempt in 1..=max_retries {
         let has_failures = results.iter().any(|r| r.status == "failed");
@@ -217,16 +147,14 @@ pub async fn provision_all_with_retry(
         );
         tokio::time::sleep(delay).await;
 
-        // Re-attempt only for services that are still missing from the DB.
+        // Re-check DB — another path may have succeeded in the meantime.
         let missing = find_missing_services(&state.db, user_id).await;
         if missing.is_empty() {
-            // All services provisioned (maybe by the /users/me fallback).
             break;
         }
 
-        let retry_results = provision_missing(state, user_id, name, email, &missing).await;
+        let retry_results = provision_services(state, user_id, name, email, &missing).await;
 
-        // Replace failed results with retry results.
         for retry in retry_results {
             if let Some(pos) = results.iter().position(|r| r.service == retry.service) {
                 results[pos] = retry;
@@ -239,32 +167,17 @@ pub async fn provision_all_with_retry(
     results
 }
 
-/// Check which services are missing credentials in the DB.
-async fn find_missing_services(db: &sqlx::PgPool, user_id: &str) -> Vec<String> {
-    let rows: Vec<(String,)> =
-        sqlx::query_as("SELECT service FROM service_connections WHERE user_id = $1")
-            .bind(user_id)
-            .fetch_all(db)
-            .await
-            .unwrap_or_default();
+/// The list of all services that need provisioning.
+const ALL_SERVICES: &[&str] = &[
+    "immich",
+    "jellyfin",
+    "paperless",
+    "audiobookshelf",
+    "kavita",
+];
 
-    let provisioned: Vec<&str> = rows.iter().map(|r| r.0.as_str()).collect();
-    let all_services = [
-        "immich",
-        "jellyfin",
-        "paperless",
-        "audiobookshelf",
-        "kavita",
-    ];
-    all_services
-        .iter()
-        .filter(|s| !provisioned.contains(s))
-        .map(|s| s.to_string())
-        .collect()
-}
-
-/// Provision only the specified services.
-async fn provision_missing(
+/// Provision a specific set of services for a user.
+async fn provision_services(
     state: &AppState,
     user_id: &str,
     name: &str,
@@ -275,74 +188,26 @@ async fn provision_missing(
 
     for service in services {
         let result = match service.as_str() {
-            "immich" => match provision_immich(state, email, name).await {
-                Ok((sid, key)) => store_and_result(&state.db, user_id, "immich", &sid, &key).await,
-                Err(e) => {
-                    tracing::error!(error = %e, "retry: failed to provision immich");
-                    ServiceProvisionResult {
-                        service: "immich".into(),
-                        status: "failed".into(),
-                        user_id: None,
-                        error: Some(e.to_string()),
-                    }
-                }
-            },
-            "jellyfin" => match provision_jellyfin(state, name).await {
-                Ok((sid, token)) => {
-                    store_and_result(&state.db, user_id, "jellyfin", &sid, &token).await
-                }
-                Err(e) => {
-                    tracing::error!(error = %e, "retry: failed to provision jellyfin");
-                    ServiceProvisionResult {
-                        service: "jellyfin".into(),
-                        status: "failed".into(),
-                        user_id: None,
-                        error: Some(e.to_string()),
-                    }
-                }
-            },
-            "paperless" => match provision_paperless(state, email).await {
-                Ok((sid, token)) => {
-                    store_and_result(&state.db, user_id, "paperless", &sid, &token).await
-                }
-                Err(e) => {
-                    tracing::error!(error = %e, "retry: failed to provision paperless");
-                    ServiceProvisionResult {
-                        service: "paperless".into(),
-                        status: "failed".into(),
-                        user_id: None,
-                        error: Some(e.to_string()),
-                    }
-                }
-            },
-            "audiobookshelf" => match provision_audiobookshelf(state, name).await {
-                Ok((sid, token)) => {
-                    store_and_result(&state.db, user_id, "audiobookshelf", &sid, &token).await
-                }
-                Err(e) => {
-                    tracing::error!(error = %e, "retry: failed to provision audiobookshelf");
-                    ServiceProvisionResult {
-                        service: "audiobookshelf".into(),
-                        status: "failed".into(),
-                        user_id: None,
-                        error: Some(e.to_string()),
-                    }
-                }
-            },
-            "kavita" => match provision_kavita(state, name).await {
-                Ok((sid, api_key)) => {
-                    store_and_result(&state.db, user_id, "kavita", &sid, &api_key).await
-                }
-                Err(e) => {
-                    tracing::error!(error = %e, "retry: failed to provision kavita");
-                    ServiceProvisionResult {
-                        service: "kavita".into(),
-                        status: "failed".into(),
-                        user_id: None,
-                        error: Some(e.to_string()),
-                    }
-                }
-            },
+            "immich" => provision_and_store(
+                state, user_id, service,
+                provision_immich(state, email, name).await,
+            ).await,
+            "jellyfin" => provision_and_store(
+                state, user_id, service,
+                provision_jellyfin(state, name).await,
+            ).await,
+            "paperless" => provision_and_store(
+                state, user_id, service,
+                provision_paperless(state, email).await,
+            ).await,
+            "audiobookshelf" => provision_and_store(
+                state, user_id, service,
+                provision_audiobookshelf(state, name).await,
+            ).await,
+            "kavita" => provision_and_store(
+                state, user_id, service,
+                provision_kavita(state, name).await,
+            ).await,
             _ => continue,
         };
         results.push(result);
@@ -351,48 +216,85 @@ async fn provision_missing(
     results
 }
 
-/// Helper: store credential and return a result.
-async fn store_and_result(
+/// Store the result of a service provision attempt. Reduces boilerplate
+/// across the per-service match arms.
+async fn provision_and_store(
+    state: &AppState,
+    user_id: &str,
+    service: &str,
+    result: Result<(String, String), AppError>,
+) -> ServiceProvisionResult {
+    match result {
+        Ok((service_user_id, api_key)) => {
+            match store_credential(&state.db, user_id, service, &service_user_id, &api_key).await {
+                Ok(()) => ServiceProvisionResult {
+                    service: service.into(),
+                    status: "provisioned".into(),
+                    user_id: Some(service_user_id),
+                    error: None,
+                },
+                Err(e) => ServiceProvisionResult {
+                    service: service.into(),
+                    status: "failed".into(),
+                    user_id: None,
+                    error: Some(e.to_string()),
+                },
+            }
+        }
+        Err(e) => {
+            tracing::error!(service = %service, error = %e, "failed to provision");
+            ServiceProvisionResult {
+                service: service.into(),
+                status: "failed".into(),
+                user_id: None,
+                error: Some(e.to_string()),
+            }
+        }
+    }
+}
+
+// ─── DB helpers ──────────────────────────────────────────────────────
+
+/// Check which services are missing credentials in the DB.
+async fn find_missing_services(db: &sqlx::PgPool, user_id: &str) -> Vec<String> {
+    let rows: Vec<(String,)> =
+        sqlx::query_as("SELECT service FROM service_connections WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_all(db)
+            .await
+            .unwrap_or_default();
+
+    let provisioned: Vec<&str> = rows.iter().map(|r| r.0.as_str()).collect();
+    ALL_SERVICES
+        .iter()
+        .filter(|s| !provisioned.contains(s))
+        .map(|s| s.to_string())
+        .collect()
+}
+
+async fn store_credential(
     db: &sqlx::PgPool,
     user_id: &str,
     service: &str,
     service_user_id: &str,
     api_key: &str,
-) -> ServiceProvisionResult {
-    match store_credential(db, user_id, service, service_user_id, api_key).await {
-        Ok(()) => ServiceProvisionResult {
-            service: service.into(),
-            status: "provisioned".into(),
-            user_id: Some(service_user_id.to_string()),
-            error: None,
-        },
-        Err(e) => ServiceProvisionResult {
-            service: service.into(),
-            status: "failed".into(),
-            user_id: None,
-            error: Some(e.to_string()),
-        },
-    }
+) -> Result<(), AppError> {
+    sqlx::query(
+        "INSERT INTO service_connections (user_id, service, service_user_id, api_key) \
+         VALUES ($1, $2, $3, $4) \
+         ON CONFLICT (user_id, service) \
+         DO UPDATE SET service_user_id = $3, api_key = $4, active = true",
+    )
+    .bind(user_id)
+    .bind(service)
+    .bind(service_user_id)
+    .bind(api_key)
+    .execute(db)
+    .await?;
+    Ok(())
 }
 
-/// Convert provision results to a JSON object for the API response.
-pub fn results_to_json(results: &[ServiceProvisionResult]) -> Value {
-    let mut services = json!({});
-    for r in results {
-        if r.status == "provisioned" {
-            services[&r.service] = json!({
-                "status": "provisioned",
-                "userId": r.user_id,
-            });
-        } else {
-            services[&r.service] = json!({
-                "status": "failed",
-                "error": r.error,
-            });
-        }
-    }
-    services
-}
+// ─── Per-service provisioning (private) ──────────────────────────────
 
 fn generate_password() -> String {
     const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -567,9 +469,26 @@ async fn provision_audiobookshelf(
     Ok((user_id, token))
 }
 
+/// Sanitize a display name into a valid Kavita username.
+/// Kavita only allows letters and digits — no spaces or special characters.
+fn sanitize_kavita_username(name: &str) -> String {
+    let sanitized: String = name.chars().filter(|c| c.is_alphanumeric()).collect();
+    if sanitized.is_empty() {
+        // Fallback: generate a random username from a hash of the original name.
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        name.hash(&mut hasher);
+        format!("user{:x}", hasher.finish())
+    } else {
+        sanitized
+    }
+}
+
 async fn provision_kavita(state: &AppState, name: &str) -> Result<(String, String), AppError> {
     let client = KavitaClient::new(&state.config.kavita_url, state.http.clone());
     let password = generate_password();
+    let username = sanitize_kavita_username(name);
+    let email = format!("{username}@steadfirm.local");
 
     // Login as admin to get a JWT
     let admin_login = client
@@ -586,20 +505,21 @@ async fn provision_kavita(state: &AppState, name: &str) -> Result<(String, Strin
 
     // Invite the new user
     let invite_resp = client
-        .admin_create_user(admin_token, name, &password)
+        .admin_create_user(admin_token, &username, &password)
         .await?;
 
     // The invite endpoint may return a confirmation link/token.
-    // Extract the email link token if present, then confirm.
     let invite_link = invite_resp.as_str().unwrap_or_default().to_string();
 
     // Confirm the invitation to set the user's password
     if !invite_link.is_empty() {
-        client.confirm_invite(&invite_link, name, &password).await?;
+        client
+            .confirm_invite(&invite_link, &username, &password)
+            .await?;
     }
 
     // Login as the new user to get their JWT
-    let user_login = client.login(name, &password).await?;
+    let user_login = client.login(&username, &password).await?;
     let user_token = user_login["token"]
         .as_str()
         .ok_or(AppError::Internal(anyhow::anyhow!(
@@ -609,31 +529,27 @@ async fn provision_kavita(state: &AppState, name: &str) -> Result<(String, Strin
     // Create a persistent API key for the user
     let api_key = client.create_api_key(user_token).await?;
 
-    // Use the email as the user ID (Kavita doesn't always expose numeric IDs easily)
-    let user_id = format!("{name}@steadfirm.local");
-
-    tracing::info!(user_id = %user_id, "provisioned kavita user");
-    Ok((user_id, api_key))
+    tracing::info!(user_id = %email, "provisioned kavita user");
+    Ok((email, api_key))
 }
 
-async fn store_credential(
-    db: &sqlx::PgPool,
-    user_id: &str,
-    service: &str,
-    service_user_id: &str,
-    api_key: &str,
-) -> Result<(), AppError> {
-    sqlx::query(
-        "INSERT INTO service_connections (user_id, service, service_user_id, api_key) \
-         VALUES ($1, $2, $3, $4) \
-         ON CONFLICT (user_id, service) \
-         DO UPDATE SET service_user_id = $3, api_key = $4, active = true",
-    )
-    .bind(user_id)
-    .bind(service)
-    .bind(service_user_id)
-    .bind(api_key)
-    .execute(db)
-    .await?;
-    Ok(())
+// ─── JSON helpers ────────────────────────────────────────────────────
+
+/// Convert provision results to a JSON object for the API response.
+pub fn results_to_json(results: &[ServiceProvisionResult]) -> Value {
+    let mut services = json!({});
+    for r in results {
+        if r.status == "provisioned" {
+            services[&r.service] = json!({
+                "status": "provisioned",
+                "userId": r.user_id,
+            });
+        } else {
+            services[&r.service] = json!({
+                "status": "failed",
+                "error": r.error,
+            });
+        }
+    }
+    services
 }

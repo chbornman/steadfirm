@@ -15,6 +15,7 @@
 ##   JELLYFIN_URL=http://localhost:18096
 ##   PAPERLESS_URL=http://localhost:18000
 ##   AUDIOBOOKSHELF_URL=http://localhost:18378
+##   KAVITA_URL=http://localhost:18500
 
 services:
   # Disable containers we run locally
@@ -33,6 +34,8 @@ services:
   jellyfin:
     ports:
       - "127.0.0.1:18096:8096"
+    volumes:
+      - /tmp/steadfirm-media:/media
 
   paperless:
     ports:
@@ -41,3 +44,11 @@ services:
   audiobookshelf:
     ports:
       - "127.0.0.1:18378:80"
+    volumes:
+      - /tmp/steadfirm-audiobooks:/audiobooks
+
+  kavita:
+    ports:
+      - "127.0.0.1:18500:5000"
+    volumes:
+      - /tmp/steadfirm-reading:/books

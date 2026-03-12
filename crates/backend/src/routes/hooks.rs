@@ -8,7 +8,6 @@ use hmac::{Hmac, Mac};
 use serde::Deserialize;
 use sha2::Sha256;
 
-use crate::provisioning;
 use crate::AppState;
 
 type HmacSha256 = Hmac<Sha256>;
@@ -72,44 +71,17 @@ async fn handle_user_created(
     tracing::info!(
         user_id = %payload.user_id,
         email = %payload.email,
-        "webhook: user-created received, spawning provisioning"
+        "webhook: user-created received"
     );
 
-    // Spawn provisioning in background with retries — don't block the webhook response.
-    // Services may still be booting (e.g. Paperless on fresh startup), so we retry
-    // failed services with exponential backoff (2s, 4s, 8s).
-    tokio::spawn(async move {
-        let results = provisioning::provision_all_with_retry(
-            &state,
-            &payload.user_id,
-            &payload.name,
-            &payload.email,
-            state.config.provision_max_retries,
-        )
-        .await;
+    state.provisioner.ensure_provisioned(
+        state.clone(),
+        payload.user_id,
+        payload.name,
+        payload.email,
+    );
 
-        let succeeded: Vec<_> = results.iter().filter(|r| r.status != "failed").collect();
-        let failed: Vec<_> = results.iter().filter(|r| r.status == "failed").collect();
-
-        if failed.is_empty() {
-            tracing::info!(
-                user_id = %payload.user_id,
-                services = ?succeeded.iter().map(|r| &r.service).collect::<Vec<_>>(),
-                "webhook: all services provisioned"
-            );
-        } else {
-            for r in &failed {
-                tracing::error!(
-                    user_id = %payload.user_id,
-                    service = %r.service,
-                    error = r.error.as_deref().unwrap_or("unknown"),
-                    "webhook: provisioning failed after retries"
-                );
-            }
-        }
-    });
-
-    // Return 200 immediately — provisioning runs async.
+    // Return 200 immediately — provisioning runs in the background.
     StatusCode::OK
 }
 
