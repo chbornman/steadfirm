@@ -1,5 +1,13 @@
 {
   "name": "steadfirm",
   "private": true,
-  "workspaces": ["packages/*", "web"]
+  "workspaces": ["packages/*", "web"],
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^20.8.3",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/bun": "^1.3.10"
+  }
 }

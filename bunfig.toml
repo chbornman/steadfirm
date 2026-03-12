@@ -1,3 +1,7 @@
 [install]
 # Use Bun's workspace resolution
 peer = false
+
+[test]
+# Register happy-dom globals and jest-dom matchers before all tests
+preload = ["./test/setup.ts"]

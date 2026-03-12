@@ -5,6 +5,9 @@
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
+  "scripts": {
+    "test": "bun test --preload ../../test/setup.ts src/"
+  },
   "exports": {
     ".": "./src/index.ts"
   }

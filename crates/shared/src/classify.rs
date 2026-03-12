@@ -419,6 +419,12 @@ pub struct LlmFileClassification {
 
     /// For audiobooks: inferred metadata to help with folder structure.
     pub audiobook_metadata: Option<LlmAudiobookMetadata>,
+
+    /// For media (movies, TV, music): inferred metadata for folder naming.
+    pub media_metadata: Option<LlmMediaMetadata>,
+
+    /// For reading (ebooks, comics, manga): inferred metadata for folder naming.
+    pub reading_metadata: Option<LlmReadingMetadata>,
 }
 
 /// Audiobook metadata inferred by the LLM from filenames and folder
@@ -433,4 +439,137 @@ pub struct LlmAudiobookMetadata {
 
     /// Inferred series name (e.g. `Mistborn`).
     pub series: Option<String>,
+}
+
+/// Media metadata inferred by the LLM from filenames and folder structure.
+///
+/// Covers movies, TV shows, and music — the LLM sets `media_type` to
+/// indicate which subtype, and the relevant fields are populated.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmMediaMetadata {
+    /// Subtype: `"movie"`, `"tv_show"`, or `"music"`.
+    pub media_type: String,
+
+    /// Clean title (movie name, show name, or album name).
+    pub title: String,
+
+    /// Release year (e.g. `"1999"`, `"2024"`).
+    pub year: Option<String>,
+
+    /// TV only: season number.
+    pub season: Option<u32>,
+
+    /// TV only: episode number.
+    pub episode: Option<u32>,
+
+    /// TV only: end episode for multi-episode files (e.g. S01E01-E03).
+    pub episode_end: Option<u32>,
+
+    /// Music only: artist/band name.
+    pub artist: Option<String>,
+
+    /// Music only: album name (may differ from `title` if title is a
+    /// track name).
+    pub album: Option<String>,
+}
+
+/// Reading metadata inferred by the LLM from filenames and folder structure.
+///
+/// Covers ebooks, comics, and manga.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmReadingMetadata {
+    /// Clean title or series name.
+    pub title: String,
+
+    /// Series name if part of a series.
+    pub series: Option<String>,
+
+    /// Volume or issue number (e.g. `"1"`, `"2.5"`).
+    pub volume: Option<String>,
+
+    /// Subtype: `"manga"`, `"comic"`, or `"ebook"`.
+    pub reading_type: Option<String>,
+}
+
+// ─── Tests ──────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ServiceKind;
+
+    #[test]
+    fn service_kind_serializes_to_snake_case() {
+        let json = serde_json::to_string(&ServiceKind::Audiobooks).unwrap();
+        assert_eq!(json, r#""audiobooks""#);
+    }
+
+    #[test]
+    fn service_kind_deserializes_from_snake_case() {
+        let kind: ServiceKind = serde_json::from_str(r#""reading""#).unwrap();
+        assert_eq!(kind, ServiceKind::Reading);
+    }
+
+    #[test]
+    fn service_kind_roundtrip_all_variants() {
+        let variants = [
+            ServiceKind::Photos,
+            ServiceKind::Media,
+            ServiceKind::Documents,
+            ServiceKind::Audiobooks,
+            ServiceKind::Reading,
+            ServiceKind::Files,
+        ];
+        for kind in variants {
+            let json = serde_json::to_string(&kind).unwrap();
+            let back: ServiceKind = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, kind);
+        }
+    }
+
+    #[test]
+    fn classify_request_deserializes_from_camel_case() {
+        let json = r#"{
+            "files": [{
+                "filename": "chapter01.mp3",
+                "mimeType": "audio/mpeg",
+                "sizeBytes": 50000000,
+                "relativePath": "Sanderson/Mistborn/chapter01.mp3"
+            }]
+        }"#;
+        let req: ClassifyRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.files.len(), 1);
+        assert_eq!(req.files[0].filename, "chapter01.mp3");
+        assert_eq!(req.files[0].mime_type, "audio/mpeg");
+        assert_eq!(req.files[0].size_bytes, 50_000_000);
+        assert_eq!(
+            req.files[0].relative_path.as_deref(),
+            Some("Sanderson/Mistborn/chapter01.mp3")
+        );
+    }
+
+    #[test]
+    fn file_entry_relative_path_defaults_to_none() {
+        let json = r#"{
+            "filename": "photo.jpg",
+            "mimeType": "image/jpeg",
+            "sizeBytes": 4000000
+        }"#;
+        let entry: FileEntry = serde_json::from_str(json).unwrap();
+        assert!(entry.relative_path.is_none());
+    }
+
+    #[test]
+    fn file_classification_result_serializes_camel_case() {
+        let result = FileClassificationResult {
+            index: 0,
+            service: ServiceKind::Photos,
+            confidence: 0.95,
+            reasoning: Some("Image extension".to_string()),
+            ai_classified: false,
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains(r#""aiClassified""#));
+        assert!(json.contains(r#""index""#));
+    }
 }
