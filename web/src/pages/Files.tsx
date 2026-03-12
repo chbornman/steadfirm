@@ -2,6 +2,8 @@ import { useState, useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Spin, message } from 'antd';
 import { Folder } from '@phosphor-icons/react';
+import { motion } from 'framer-motion';
+import { fadeIn } from '@steadfirm/theme';
 import { FileTable } from '@steadfirm/ui';
 import { deleteFile, reclassifyFile } from '@/api/files';
 import type { UserFile } from '@steadfirm/shared';
@@ -99,7 +101,12 @@ export function FilesPage() {
             description="Upload your first files to get started"
           />
         ) : (
-          <div style={{ paddingTop: 16 }}>
+          <motion.div
+            variants={fadeIn}
+            initial="hidden"
+            animate="visible"
+            style={{ paddingTop: 16 }}
+          >
             <FileTable
               files={allFiles}
               onDownload={handleDownload}
@@ -107,7 +114,7 @@ export function FilesPage() {
               onReclassify={handleReclassify}
               loading={isLoading}
             />
-          </div>
+          </motion.div>
         )}
       </ContentPage>
     </>

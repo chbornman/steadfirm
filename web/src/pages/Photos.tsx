@@ -1,9 +1,9 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Spin, Grid, Image } from 'antd';
 import { Heart } from '@phosphor-icons/react';
 import { motion } from 'framer-motion';
-import { gridItem as gridItemVariant, overlay, cssVar } from '@steadfirm/theme';
+import { gridContainer, gridItem as gridItemVariant, overlay, cssVar } from '@steadfirm/theme';
 import type { Photo, PhotoListResponse } from '@steadfirm/shared';
 import { toggleFavorite } from '@/api/photos';
 import { ContentPage, FilterRail, useContentList } from '@/components/content';
@@ -78,8 +78,6 @@ export function PhotosPage() {
     [favoriteMutation],
   );
 
-  const renderedRef = useRef(new Set<string>());
-
   return (
     <>
       <style>{`
@@ -118,7 +116,10 @@ export function PhotosPage() {
             description="Upload your first photos to get started"
           />
         ) : (
-          <div
+          <motion.div
+            variants={gridContainer}
+            initial="hidden"
+            animate="visible"
             style={{
               display: 'grid',
               gridTemplateColumns: isMobile
@@ -129,16 +130,10 @@ export function PhotosPage() {
             }}
           >
             {allPhotos.map((photo, index) => {
-              const isNew = !renderedRef.current.has(photo.id);
-              if (isNew) renderedRef.current.add(photo.id);
-
               return (
                 <motion.div
                   key={photo.id}
                   variants={gridItemVariant}
-                  initial={isNew ? 'hidden' : false}
-                  whileInView="visible"
-                  viewport={{ once: true, margin: '-30px' }}
                   className="photo-cell"
                   style={{
                     position: 'relative',
@@ -211,7 +206,7 @@ export function PhotosPage() {
                 </motion.div>
               );
             })}
-          </div>
+          </motion.div>
         )}
       </ContentPage>
 

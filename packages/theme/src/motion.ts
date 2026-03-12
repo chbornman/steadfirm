@@ -1,22 +1,22 @@
 export const duration = {
-  instant: 0.1,
-  fast: 0.15,
-  normal: 0.25,
-  slow: 0.4,
-  entrance: 0.5,
+  instant: 0.15,
+  fast: 0.25,
+  normal: 0.4,
+  slow: 0.6,
+  entrance: 0.7,
 };
 
 export const ease = {
   out: [0.16, 1, 0.3, 1] as const,
   inOut: [0.45, 0, 0.55, 1] as const,
-  spring: { type: 'spring' as const, stiffness: 400, damping: 30 },
-  gentleSpring: { type: 'spring' as const, stiffness: 200, damping: 25 },
+  spring: { type: 'spring' as const, stiffness: 260, damping: 28 },
+  gentleSpring: { type: 'spring' as const, stiffness: 140, damping: 22 },
 };
 
 export const stagger = {
-  fast: 0.03,
-  normal: 0.05,
-  slow: 0.08,
+  fast: 0.05,
+  normal: 0.07,
+  slow: 0.1,
 };
 
 export const gridContainer = {
