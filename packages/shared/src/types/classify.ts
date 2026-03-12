@@ -38,6 +38,14 @@ export interface ClassifyResponse {
    * correct Author/Title/ folder structure for Audiobookshelf.
    */
   audiobookGroups: AudiobookGroup[];
+  /** Detected TV show groupings. */
+  tvShowGroups?: TvShowGroup[];
+  /** Detected movie groupings. */
+  movieGroups?: MovieGroup[];
+  /** Detected music album groupings. */
+  musicGroups?: MusicAlbumGroup[];
+  /** Detected reading/ebook groupings. */
+  readingGroups?: ReadingGroup[];
   /**
    * LLM debug info — only populated when AI classification was used.
    * Contains the prompts sent and raw response so the dev-debug
@@ -142,4 +150,126 @@ export interface AudioFileProbe {
   title?: string;
   /** Whether this file has an embedded cover image. */
   hasEmbeddedCover: boolean;
+}
+
+// ─── TV Show grouping ────────────────────────────────────────────────
+
+/**
+ * A set of files that belong to the same TV show.
+ * Used to create Shows/Series Name (year)/Season ##/ folder structure.
+ */
+export interface TvShowGroup {
+  /** Inferred series title (e.g. `Breaking Bad`). */
+  seriesName: string;
+  /** Inferred year (e.g. `2008`). */
+  year?: string;
+  /** Episodes detected in this group. */
+  episodes: TvEpisode[];
+  /** Indices into the request's files array. */
+  fileIndices: number[];
+  /** Subtitle file indices. */
+  subtitleIndices?: number[];
+}
+
+/** A single episode parsed from a filename. */
+export interface TvEpisode {
+  /** Season number. */
+  season: number;
+  /** Episode number. */
+  episode: number;
+  /** End episode for multi-episode files (e.g. S01E01-E02). */
+  episodeEnd?: number;
+  /** Episode title if parseable. */
+  title?: string;
+  /** Index into the request's files array. */
+  fileIndex: number;
+}
+
+// ─── Movie grouping ─────────────────────────────────────────────────
+
+/**
+ * A single movie detected from uploaded files.
+ * Used to create Movies/Movie Name (year)/ folder structure.
+ */
+export interface MovieGroup {
+  /** Inferred movie title (e.g. `The Matrix`). */
+  title: string;
+  /** Inferred year (e.g. `1999`). */
+  year?: string;
+  /** Video resolution (e.g. `1080p`, `4K`). */
+  resolution?: string;
+  /** Source/quality info (e.g. `BluRay`, `WEB-DL`). */
+  source?: string;
+  /** Index of the main video file. */
+  fileIndex: number;
+  /** Subtitle file indices. */
+  subtitleIndices?: number[];
+  /** Other associated file indices (cover, NFO, etc.). */
+  extraIndices?: number[];
+}
+
+// ─── Music grouping ─────────────────────────────────────────────────
+
+/**
+ * A set of files that belong to the same music album.
+ * Used to create Music/Artist/Album/ folder structure.
+ */
+export interface MusicAlbumGroup {
+  /** Album title. */
+  album: string;
+  /** Artist name. */
+  artist?: string;
+  /** Album year. */
+  year?: string;
+  /** Indices into the request's files array. */
+  fileIndices: number[];
+  /** Cover art file index. */
+  coverIndex?: number;
+  /** Probe data from ffprobe. */
+  probeData?: MusicProbeData;
+}
+
+/** Metadata extracted from music file ID3/ffprobe tags. */
+export interface MusicProbeData {
+  /** Album tag. */
+  album?: string;
+  /** Artist/album-artist tag. */
+  artist?: string;
+  /** Genre tag. */
+  genre?: string;
+  /** Year/date tag. */
+  year?: string;
+  /** Total duration in seconds. */
+  totalDurationSecs: number;
+  /** Per-file probe results. */
+  tracks: AudioFileProbe[];
+}
+
+// ─── Reading grouping ───────────────────────────────────────────────
+
+/**
+ * A set of files that belong to the same reading series.
+ * Used to create Series Name/ folder structure for Kavita.
+ */
+export interface ReadingGroup {
+  /** Series name. */
+  seriesName: string;
+  /** Individual volumes/issues. */
+  volumes: ReadingVolume[];
+  /** Indices into the request's files array. */
+  fileIndices: number[];
+}
+
+/** A single volume/issue in a reading group. */
+export interface ReadingVolume {
+  /** Volume/issue number. */
+  number?: string;
+  /** Volume title if parseable. */
+  title?: string;
+  /** Format: epub, cbz, pdf, etc. */
+  format: string;
+  /** Whether this is a special. */
+  isSpecial: boolean;
+  /** Index into the request's files array. */
+  fileIndex: number;
 }

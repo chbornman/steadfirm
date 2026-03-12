@@ -22,6 +22,14 @@ import type { ServiceName, AudiobookGroup } from '@steadfirm/shared';
 import { colors, cssVar } from '@steadfirm/theme';
 import { AudiobookReviewPanel } from './AudiobookReviewPanel';
 import type { AudiobookGroupEditable } from './AudiobookReviewPanel';
+import { TvShowReviewPanel } from './TvShowReviewPanel';
+import type { TvShowGroupEditable } from './TvShowReviewPanel';
+import { MovieReviewPanel } from './MovieReviewPanel';
+import type { MovieGroupEditable } from './MovieReviewPanel';
+import { MusicReviewPanel } from './MusicReviewPanel';
+import type { MusicAlbumGroupEditable } from './MusicReviewPanel';
+import { ReadingReviewPanel } from './ReadingReviewPanel';
+import type { ReadingGroupEditable } from './ReadingReviewPanel';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -71,6 +79,10 @@ export interface DropZoneProps {
   step: 'select' | 'streaming' | 'review' | 'upload';
   uploadProgress: Map<string, UploadFileProgress>;
   audiobookGroups?: AudiobookGroupEditable[];
+  tvShowGroups?: TvShowGroupEditable[];
+  movieGroups?: MovieGroupEditable[];
+  musicGroups?: MusicAlbumGroupEditable[];
+  readingGroups?: ReadingGroupEditable[];
   onFilesSelected: (files: DroppedFile[]) => void;
   onOverride: (index: number, service: ServiceName) => void;
   onConfirm: () => void;
@@ -86,6 +98,14 @@ export interface DropZoneProps {
   pendingCount?: number;
   /** Called when the user edits audiobook group metadata. */
   onAudiobookGroupChange?: (groupIndex: number, updates: Partial<AudiobookGroupEditable>) => void;
+  /** Called when the user edits TV show group metadata. */
+  onTvShowGroupChange?: (groupIndex: number, updates: Partial<TvShowGroupEditable>) => void;
+  /** Called when the user edits movie group metadata. */
+  onMovieGroupChange?: (groupIndex: number, updates: Partial<MovieGroupEditable>) => void;
+  /** Called when the user edits music group metadata. */
+  onMusicGroupChange?: (groupIndex: number, updates: Partial<MusicAlbumGroupEditable>) => void;
+  /** Called when the user edits reading group metadata. */
+  onReadingGroupChange?: (groupIndex: number, updates: Partial<ReadingGroupEditable>) => void;
   /** Whether audio files are being probed for metadata. */
   isProbing?: boolean;
 }
@@ -341,10 +361,18 @@ function StreamingStep({
   streamingPhase,
   pendingCount,
   audiobookGroups,
+  tvShowGroups,
+  movieGroups,
+  musicGroups,
+  readingGroups,
   onOverride,
   onConfirm,
   onReset,
   onAudiobookGroupChange,
+  onTvShowGroupChange,
+  onMovieGroupChange,
+  onMusicGroupChange,
+  onReadingGroupChange,
   isProbing,
 }: {
   droppedFiles: DroppedFile[];
@@ -352,10 +380,18 @@ function StreamingStep({
   streamingPhase: StreamingPhase;
   pendingCount: number;
   audiobookGroups?: AudiobookGroupEditable[];
+  tvShowGroups?: TvShowGroupEditable[];
+  movieGroups?: MovieGroupEditable[];
+  musicGroups?: MusicAlbumGroupEditable[];
+  readingGroups?: ReadingGroupEditable[];
   onOverride: (index: number, service: ServiceName) => void;
   onConfirm: () => void;
   onReset: () => void;
   onAudiobookGroupChange?: (groupIndex: number, updates: Partial<AudiobookGroupEditable>) => void;
+  onTvShowGroupChange?: (groupIndex: number, updates: Partial<TvShowGroupEditable>) => void;
+  onMovieGroupChange?: (groupIndex: number, updates: Partial<MovieGroupEditable>) => void;
+  onMusicGroupChange?: (groupIndex: number, updates: Partial<MusicAlbumGroupEditable>) => void;
+  onReadingGroupChange?: (groupIndex: number, updates: Partial<ReadingGroupEditable>) => void;
   isProbing?: boolean;
 }) {
   const isDone = streamingPhase === 'done' || streamingPhase === 'error';
@@ -440,20 +476,56 @@ function StreamingStep({
         </div>
       )}
 
-      {/* Audiobook review panel */}
-      {audiobookGroups && audiobookGroups.length > 0 && isDone && (
-        <AudiobookReviewPanel
-          groups={audiobookGroups}
-          fileNames={new Map(
-            droppedFiles.map((d, i) => [
-              i,
-              { name: d.file.name, size: d.file.size, relativePath: d.relativePath },
-            ]),
-          )}
-          onGroupChange={onAudiobookGroupChange ?? (() => {})}
-          isProbing={isProbing}
-        />
-      )}
+      {/* Review panels for detected groups */}
+      {isDone && (() => {
+        const fileNamesMap = new Map(
+          droppedFiles.map((d, i) => [
+            i,
+            { name: d.file.name, size: d.file.size, relativePath: d.relativePath },
+          ] as const),
+        );
+        return (
+          <>
+            {audiobookGroups && audiobookGroups.length > 0 && (
+              <AudiobookReviewPanel
+                groups={audiobookGroups}
+                fileNames={fileNamesMap}
+                onGroupChange={onAudiobookGroupChange ?? (() => {})}
+                isProbing={isProbing}
+              />
+            )}
+            {tvShowGroups && tvShowGroups.length > 0 && (
+              <TvShowReviewPanel
+                groups={tvShowGroups}
+                fileNames={fileNamesMap}
+                onGroupChange={onTvShowGroupChange ?? (() => {})}
+              />
+            )}
+            {movieGroups && movieGroups.length > 0 && (
+              <MovieReviewPanel
+                groups={movieGroups}
+                fileNames={fileNamesMap}
+                onGroupChange={onMovieGroupChange ?? (() => {})}
+              />
+            )}
+            {musicGroups && musicGroups.length > 0 && (
+              <MusicReviewPanel
+                groups={musicGroups}
+                fileNames={fileNamesMap}
+                onGroupChange={onMusicGroupChange ?? (() => {})}
+                isProbing={isProbing}
+              />
+            )}
+            {readingGroups && readingGroups.length > 0 && (
+              <ReadingReviewPanel
+                groups={readingGroups}
+                fileNames={fileNamesMap}
+                onGroupChange={onReadingGroupChange ?? (() => {})}
+              />
+            )}
+          </>
+        );
+      })()}
 
       {/* Category buckets */}
       <LayoutGroup>
@@ -857,6 +929,10 @@ export function DropZone({
   step,
   uploadProgress,
   audiobookGroups,
+  tvShowGroups,
+  movieGroups,
+  musicGroups,
+  readingGroups,
   onFilesSelected,
   onOverride,
   onConfirm,
@@ -866,6 +942,10 @@ export function DropZone({
   streamingPhase,
   pendingCount,
   onAudiobookGroupChange,
+  onTvShowGroupChange,
+  onMovieGroupChange,
+  onMusicGroupChange,
+  onReadingGroupChange,
   isProbing,
 }: DropZoneProps) {
   return (
@@ -878,10 +958,18 @@ export function DropZone({
           streamingPhase={streamingPhase}
           pendingCount={pendingCount ?? 0}
           audiobookGroups={audiobookGroups}
+          tvShowGroups={tvShowGroups}
+          movieGroups={movieGroups}
+          musicGroups={musicGroups}
+          readingGroups={readingGroups}
           onOverride={onOverride}
           onConfirm={onConfirm}
           onReset={onReset}
           onAudiobookGroupChange={onAudiobookGroupChange}
+          onTvShowGroupChange={onTvShowGroupChange}
+          onMovieGroupChange={onMovieGroupChange}
+          onMusicGroupChange={onMusicGroupChange}
+          onReadingGroupChange={onReadingGroupChange}
           isProbing={isProbing}
         />
       )}
@@ -901,10 +989,18 @@ export function DropZone({
           streamingPhase="done"
           pendingCount={0}
           audiobookGroups={audiobookGroups}
+          tvShowGroups={tvShowGroups}
+          movieGroups={movieGroups}
+          musicGroups={musicGroups}
+          readingGroups={readingGroups}
           onOverride={onOverride}
           onConfirm={onConfirm}
           onReset={onReset}
           onAudiobookGroupChange={onAudiobookGroupChange}
+          onTvShowGroupChange={onTvShowGroupChange}
+          onMovieGroupChange={onMovieGroupChange}
+          onMusicGroupChange={onMusicGroupChange}
+          onReadingGroupChange={onReadingGroupChange}
           isProbing={isProbing}
         />
       )}

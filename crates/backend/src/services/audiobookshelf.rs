@@ -264,7 +264,8 @@ impl AudiobookshelfClient {
         Ok(())
     }
 
-    /// Trigger a library scan.
+    /// Trigger a library scan (used by drop zone upload routing).
+    #[allow(dead_code)]
     pub async fn scan_library(&self, token: &str, library_id: &str) -> Result<(), AppError> {
         let resp = self
             .request(

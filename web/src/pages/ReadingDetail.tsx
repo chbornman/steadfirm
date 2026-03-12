@@ -1,4 +1,4 @@
-import { useParams } from '@tanstack/react-router';
+import { useParams, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Typography, Spin, Progress, Grid } from 'antd';
 import { BookOpenText } from '@phosphor-icons/react';
@@ -13,8 +13,23 @@ export function ReadingDetailPage() {
   const seriesId = params.seriesId ?? '';
   const screens = useBreakpoint();
   const isMobile = !screens.md;
+  const navigate = useNavigate();
 
   const { data: series, isLoading } = useQuery(readingQueries.detail(seriesId));
+
+  // Fetch the continue point so we know which chapter to open
+  const { data: continueChapter } = useQuery({
+    ...readingQueries.continuePoint(seriesId),
+    enabled: !!series,
+  });
+
+  const handleRead = () => {
+    if (!continueChapter) return;
+    void navigate({
+      to: `/reading/${seriesId}/read`,
+      search: { chapterId: String(continueChapter.id) },
+    });
+  };
 
   if (isLoading) {
     return (
@@ -122,6 +137,9 @@ export function ReadingDetailPage() {
               type="primary"
               size="large"
               icon={<BookOpenText size={18} weight="fill" />}
+              onClick={handleRead}
+              disabled={!continueChapter}
+              loading={!continueChapter && !!series}
               style={{
                 height: 48,
                 paddingInline: 32,

@@ -28,7 +28,8 @@ use crate::services::ai::{extract_json_from_text, ClassifyStreamEvent};
 use crate::AppState;
 use steadfirm_shared::classify::{
     AudiobookGroup, ClassifyDebugInfo, ClassifyResponse, FileClassificationResult, FileEntry,
-    LlmClassifyResult, LlmFileClassification,
+    LlmClassifyResult, LlmFileClassification, MovieGroup, MusicAlbumGroup, ReadingGroup,
+    ReadingVolume, TvEpisode, TvShowGroup,
 };
 use steadfirm_shared::ServiceKind;
 
@@ -85,7 +86,7 @@ struct SseIndexMap {
     index_map: Vec<usize>,
 }
 
-/// Final event with authoritative classifications, audiobook groups, and debug info.
+/// Final event with authoritative classifications, all groups, and debug info.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SseDone {
@@ -93,7 +94,69 @@ struct SseDone {
     /// Frontend replaces any partial-parse results with these.
     classifications: Vec<SseClassification>,
     audiobook_groups: Vec<AudiobookGroup>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tv_show_groups: Vec<TvShowGroup>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    movie_groups: Vec<MovieGroup>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    music_groups: Vec<MusicAlbumGroup>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    reading_groups: Vec<ReadingGroup>,
     debug_info: Option<ClassifyDebugInfo>,
+}
+
+// ─── Group builder helpers ───────────────────────────────────────────
+
+/// Build all group types from classification results.
+type AllGroups = (
+    Vec<AudiobookGroup>,
+    Vec<TvShowGroup>,
+    Vec<MovieGroup>,
+    Vec<MusicAlbumGroup>,
+    Vec<ReadingGroup>,
+);
+
+fn build_all_groups(files: &[FileEntry], results: &[FileClassificationResult]) -> AllGroups {
+    let audiobook_groups = detect_audiobook_groups(files, results);
+    let tv_show_groups = detect_tv_show_groups(files, results);
+
+    // Collect all TV show file indices to exclude from movie detection
+    let tv_file_indices: std::collections::HashSet<usize> = tv_show_groups
+        .iter()
+        .flat_map(|g| g.file_indices.iter().copied())
+        .collect();
+
+    let movie_groups = detect_movie_groups(files, results, &tv_file_indices);
+    let music_groups = detect_music_groups(files, results);
+    let reading_groups = detect_reading_groups(files, results);
+
+    (
+        audiobook_groups,
+        tv_show_groups,
+        movie_groups,
+        music_groups,
+        reading_groups,
+    )
+}
+
+/// Build an SseDone event with all groups.
+fn build_sse_done(
+    classifications: Vec<SseClassification>,
+    files: &[FileEntry],
+    results: &[FileClassificationResult],
+    debug_info: Option<ClassifyDebugInfo>,
+) -> SseDone {
+    let (audiobook_groups, tv_show_groups, movie_groups, music_groups, reading_groups) =
+        build_all_groups(files, results);
+    SseDone {
+        classifications,
+        audiobook_groups,
+        tv_show_groups,
+        movie_groups,
+        music_groups,
+        reading_groups,
+        debug_info,
+    }
 }
 
 // ─── SSE streaming endpoint ──────────────────────────────────────────
@@ -167,13 +230,11 @@ async fn classify_stream(
         if low_confidence.is_empty() {
             yield sse_log!("[classify] all files classified by heuristics — skipping LLM");
             // All files classified by heuristics — skip LLM
-            let audiobook_groups = detect_audiobook_groups(&request.files, &results);
-            yield sse_log!("[classify] audiobook groups: {}", audiobook_groups.len());
-            if let Ok(data) = serde_json::to_string(&SseDone {
-                classifications: vec![],
-                audiobook_groups,
-                debug_info: None,
-            }) {
+            let done = build_sse_done(vec![], &request.files, &results, None);
+            yield sse_log!("[classify] groups: {} audiobooks, {} tv shows, {} movies, {} music, {} reading",
+                done.audiobook_groups.len(), done.tv_show_groups.len(),
+                done.movie_groups.len(), done.music_groups.len(), done.reading_groups.len());
+            if let Ok(data) = serde_json::to_string(&done) {
                 yield sse_log!("[classify] sending done event");
                 yield Ok(Event::default().event("done").data(data));
             }
@@ -197,13 +258,11 @@ async fn classify_stream(
                 }
             }
 
-            let audiobook_groups = detect_audiobook_groups(&request.files, &results);
-            yield sse_log!("[classify] audiobook groups: {}", audiobook_groups.len());
-            if let Ok(data) = serde_json::to_string(&SseDone {
-                classifications: vec![],
-                audiobook_groups,
-                debug_info: None,
-            }) {
+            let done = build_sse_done(vec![], &request.files, &results, None);
+            yield sse_log!("[classify] groups: {} audiobooks, {} tv shows, {} movies, {} music, {} reading (AI disabled)",
+                done.audiobook_groups.len(), done.tv_show_groups.len(),
+                done.movie_groups.len(), done.music_groups.len(), done.reading_groups.len());
+            if let Ok(data) = serde_json::to_string(&done) {
                 yield sse_log!("[classify] sending done event (AI disabled path)");
                 yield Ok(Event::default().event("done").data(data));
             }
@@ -353,12 +412,6 @@ async fn classify_stream(
                             );
 
                             // Send done event so the frontend can finalize.
-                            let audiobook_groups = detect_audiobook_groups(&request.files, &results);
-                            yield sse_log!(
-                                "[classify] audiobook groups: {} (error recovery path)",
-                                audiobook_groups.len()
-                            );
-
                             let debug_info = Some(ClassifyDebugInfo {
                                 system_prompt: meta.system_prompt.clone(),
                                 user_prompt: meta.user_prompt.clone(),
@@ -369,12 +422,9 @@ async fn classify_stream(
                                 duration_ms: start.elapsed().as_millis() as u64,
                             });
 
-                            if let Ok(data) = serde_json::to_string(&SseDone {
-                                classifications: partial_classifications,
-                                audiobook_groups,
-                                debug_info,
-                            }) {
-                                yield sse_log!("[classify] sending done event (error recovery path)");
+                            let done = build_sse_done(partial_classifications, &request.files, &results, debug_info);
+                            yield sse_log!("[classify] sending done event (error recovery path)");
+                            if let Ok(data) = serde_json::to_string(&done) {
                                 yield Ok(Event::default().event("done").data(data));
                             }
                         } else {
@@ -450,25 +500,26 @@ async fn classify_stream(
                                 duration_ms,
                             });
 
-                            // ── Step 3: Audiobook grouping ──
-                            let audiobook_groups = detect_audiobook_groups(&request.files, &results);
+                            // ── Step 3: Build all groups ──
+                            let done = build_sse_done(classifications, &request.files, &results, debug_info);
 
                             tracing::info!(
                                 file_count,
-                                audiobook_groups = audiobook_groups.len(),
+                                audiobook_groups = done.audiobook_groups.len(),
+                                tv_show_groups = done.tv_show_groups.len(),
+                                movie_groups = done.movie_groups.len(),
+                                music_groups = done.music_groups.len(),
+                                reading_groups = done.reading_groups.len(),
                                 "classify stream complete"
                             );
 
                             yield sse_log!(
-                                "[classify] stream complete — {} classifications, {} audiobook groups",
-                                classifications.len(), audiobook_groups.len()
+                                "[classify] stream complete — {} audiobooks, {} tv shows, {} movies, {} music, {} reading",
+                                done.audiobook_groups.len(), done.tv_show_groups.len(),
+                                done.movie_groups.len(), done.music_groups.len(), done.reading_groups.len()
                             );
 
-                            if let Ok(data) = serde_json::to_string(&SseDone {
-                                classifications,
-                                audiobook_groups,
-                                debug_info,
-                            }) {
+                            if let Ok(data) = serde_json::to_string(&done) {
                                 yield Ok(Event::default().event("done").data(data));
                             }
                         }
@@ -496,12 +547,8 @@ async fn classify_stream(
                         }
 
                         // Send done event so frontend can finalize
-                        let audiobook_groups = detect_audiobook_groups(&request.files, &results);
-                        if let Ok(data) = serde_json::to_string(&SseDone {
-                            classifications: vec![],
-                            audiobook_groups,
-                            debug_info: None,
-                        }) {
+                        let done = build_sse_done(vec![], &request.files, &results, None);
+                        if let Ok(data) = serde_json::to_string(&done) {
                             yield sse_log!("[classify] sending done event (LLM start error path)");
                             yield Ok(Event::default().event("done").data(data));
                         }
@@ -692,17 +739,26 @@ async fn classify(
         }
     }
 
-    let audiobook_groups = detect_audiobook_groups(&request.files, &results);
+    let (audiobook_groups, tv_show_groups, movie_groups, music_groups, reading_groups) =
+        build_all_groups(&request.files, &results);
 
     tracing::info!(
         file_count,
         audiobook_groups = audiobook_groups.len(),
+        tv_show_groups = tv_show_groups.len(),
+        movie_groups = movie_groups.len(),
+        music_groups = music_groups.len(),
+        reading_groups = reading_groups.len(),
         "classify response ready"
     );
 
     Ok(Json(ClassifyResponse {
         files: results,
         audiobook_groups,
+        tv_show_groups,
+        movie_groups,
+        music_groups,
+        reading_groups,
         debug_info,
     }))
 }
@@ -738,10 +794,13 @@ fn heuristic_classify(index: usize, file: &FileEntry) -> FileClassificationResul
         // M4B is always an audiobook
         "m4b" => (ServiceKind::Audiobooks, 0.98),
 
-        // Video — could be personal, movie, or TV; let LLM decide
+        // Video — check for TV show patterns before deferring to LLM
         "mp4" | "mov" | "mkv" | "avi" | "wmv" | "webm" | "flv" | "m4v" | "ts" => {
-            (ServiceKind::Media, 0.5)
+            heuristic_classify_video(file)
         }
+
+        // Subtitle files — follow their associated video
+        "srt" | "ass" | "ssa" | "sub" | "idx" | "vtt" => heuristic_classify_video(file),
 
         // Audio — check for audiobook signals before falling back to LLM
         "mp3" | "flac" | "ogg" | "aac" | "wma" | "opus" | "m4a" | "wav" => {
@@ -830,6 +889,274 @@ fn heuristic_classify_audio(file: &FileEntry) -> (ServiceKind, f32) {
 
     // Default: ambiguous, let LLM decide
     (ServiceKind::Media, 0.5)
+}
+
+/// Enhanced heuristic for video/subtitle files that checks for TV show
+/// patterns (S##E##) and movie-like naming before deferring to the LLM.
+fn heuristic_classify_video(file: &FileEntry) -> (ServiceKind, f32) {
+    let lower_name = file.filename.to_lowercase();
+    let lower_path = file.relative_path.as_deref().unwrap_or("").to_lowercase();
+    let combined = format!("{} {}", lower_path, lower_name);
+
+    // Strong TV show signal: S##E## pattern
+    if parse_season_episode(&combined).is_some() {
+        return (ServiceKind::Media, 0.92);
+    }
+
+    // Check for "Season" folder in path
+    if lower_path.contains("season ") || lower_path.contains("season_") {
+        return (ServiceKind::Media, 0.90);
+    }
+
+    // Movie-like: has year in parentheses and/or scene release tags
+    let has_year_parens = combined
+        .find('(')
+        .and_then(|start| {
+            let rest = &combined[start + 1..];
+            rest.find(')').and_then(|end| {
+                let inside = &rest[..end];
+                if inside.len() == 4 && inside.chars().all(|c| c.is_ascii_digit()) {
+                    let year: u32 = inside.parse().unwrap_or(0);
+                    if (1920..=2030).contains(&year) {
+                        return Some(());
+                    }
+                }
+                None
+            })
+        })
+        .is_some();
+
+    let has_resolution = crate::constants::RESOLUTION_TAGS
+        .iter()
+        .any(|tag| combined.contains(tag));
+
+    let has_source = crate::constants::SOURCE_TAGS
+        .iter()
+        .any(|tag| combined.contains(tag));
+
+    if has_year_parens && (has_resolution || has_source) {
+        return (ServiceKind::Media, 0.88);
+    }
+    if has_year_parens {
+        return (ServiceKind::Media, 0.80);
+    }
+    if has_resolution || has_source {
+        return (ServiceKind::Media, 0.70);
+    }
+
+    // Default: ambiguous, let LLM decide
+    (ServiceKind::Media, 0.5)
+}
+
+/// Parse S##E## patterns from a string, returning (season, episode, optional end_episode).
+fn parse_season_episode(s: &str) -> Option<(u32, u32, Option<u32>)> {
+    // Match patterns: S01E02, S1E2, s01e02, S01E01-E02, S01E01E02
+    let lower = s.to_lowercase();
+    let bytes = lower.as_bytes();
+
+    for i in 0..bytes.len().saturating_sub(3) {
+        if bytes[i] != b's' {
+            continue;
+        }
+
+        // Check it's a word boundary before 's'
+        if i > 0 && bytes[i - 1].is_ascii_alphanumeric() {
+            continue;
+        }
+
+        // Parse season number
+        let season_start = i + 1;
+        let mut j = season_start;
+        while j < bytes.len() && bytes[j].is_ascii_digit() {
+            j += 1;
+        }
+        if j == season_start || j >= bytes.len() {
+            continue;
+        }
+        let season: u32 = match lower[season_start..j].parse() {
+            Ok(n) => n,
+            Err(_) => continue,
+        };
+
+        if bytes[j] != b'e' {
+            continue;
+        }
+
+        // Parse episode number
+        let ep_start = j + 1;
+        let mut k = ep_start;
+        while k < bytes.len() && bytes[k].is_ascii_digit() {
+            k += 1;
+        }
+        if k == ep_start {
+            continue;
+        }
+        let episode: u32 = match lower[ep_start..k].parse() {
+            Ok(n) => n,
+            Err(_) => continue,
+        };
+
+        // Check for multi-episode: -E## or E##
+        let mut episode_end: Option<u32> = None;
+        if k < bytes.len() {
+            let next_start = if bytes[k] == b'-' && k + 1 < bytes.len() && bytes[k + 1] == b'e' {
+                k + 2
+            } else if bytes[k] == b'e' {
+                k + 1
+            } else {
+                0
+            };
+            if next_start > 0 && next_start < bytes.len() {
+                let mut m = next_start;
+                while m < bytes.len() && bytes[m].is_ascii_digit() {
+                    m += 1;
+                }
+                if m > next_start {
+                    if let Ok(end_ep) = lower[next_start..m].parse::<u32>() {
+                        if end_ep > episode {
+                            episode_end = Some(end_ep);
+                        }
+                    }
+                }
+            }
+        }
+
+        return Some((season, episode, episode_end));
+    }
+
+    None
+}
+
+/// Extract a movie title and year from a filename, stripping scene release tags.
+fn parse_movie_name(filename: &str) -> (String, Option<String>, Option<String>, Option<String>) {
+    let stem = filename
+        .rsplit('.')
+        .skip(1)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join(".");
+    let working = if stem.is_empty() { filename } else { &stem };
+
+    // Replace common separators with spaces
+    let normalized: String = working
+        .chars()
+        .map(|c| if c == '.' || c == '_' { ' ' } else { c })
+        .collect();
+
+    let mut title_end = normalized.len();
+    let mut year: Option<String> = None;
+    let mut resolution: Option<String> = None;
+    let mut source: Option<String> = None;
+
+    // Find year in parentheses: (2019)
+    if let Some(paren_start) = normalized.find('(') {
+        let rest = &normalized[paren_start + 1..];
+        if let Some(paren_end) = rest.find(')') {
+            let inside = &rest[..paren_end];
+            if inside.len() == 4 && inside.chars().all(|c| c.is_ascii_digit()) {
+                let y: u32 = inside.parse().unwrap_or(0);
+                if (1920..=2030).contains(&y) {
+                    year = Some(inside.to_string());
+                    title_end = paren_start;
+                }
+            }
+        }
+    }
+
+    // If no parens year, look for bare 4-digit year
+    if year.is_none() {
+        let lower = normalized.to_lowercase();
+        for word in lower.split_whitespace() {
+            if word.len() == 4 && word.chars().all(|c| c.is_ascii_digit()) {
+                let y: u32 = word.parse().unwrap_or(0);
+                if (1920..=2030).contains(&y) {
+                    year = Some(word.to_string());
+                    if let Some(pos) = lower.find(word) {
+                        title_end = title_end.min(pos);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    // Extract resolution and source tags
+    let lower = normalized.to_lowercase();
+    for tag in crate::constants::RESOLUTION_TAGS {
+        if lower.contains(tag) {
+            resolution = Some(tag.to_string());
+            if let Some(pos) = lower.find(tag) {
+                title_end = title_end.min(pos);
+            }
+            break;
+        }
+    }
+
+    for tag in crate::constants::SOURCE_TAGS {
+        if lower.contains(tag) {
+            source = Some(tag.to_string());
+            if let Some(pos) = lower.find(tag) {
+                title_end = title_end.min(pos);
+            }
+            break;
+        }
+    }
+
+    // Also cut at codec tags
+    for tag in crate::constants::CODEC_TAGS {
+        if let Some(pos) = lower.find(tag) {
+            title_end = title_end.min(pos);
+        }
+    }
+
+    let title = normalized[..title_end].trim().to_string();
+
+    (title, year, resolution, source)
+}
+
+/// Extract a TV show series name from a filename by finding text before S##E##.
+fn parse_series_name_from_filename(filename: &str) -> String {
+    let stem = filename
+        .rsplit('.')
+        .skip(1)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join(".");
+    let working = if stem.is_empty() { filename } else { &stem };
+
+    // Replace separators
+    let normalized: String = working
+        .chars()
+        .map(|c| if c == '.' || c == '_' { ' ' } else { c })
+        .collect();
+
+    // Find S##E## and take everything before it as the series name
+    let lower = normalized.to_lowercase();
+    for i in 0..lower.len().saturating_sub(3) {
+        let bytes = lower.as_bytes();
+        if bytes[i] == b's'
+            && (i == 0 || !bytes[i - 1].is_ascii_alphanumeric())
+            && i + 1 < bytes.len()
+            && bytes[i + 1].is_ascii_digit()
+        {
+            // Check it's actually S##E## pattern
+            let rest = &lower[i..];
+            if parse_season_episode(rest).is_some() {
+                let before = normalized[..i].trim();
+                if !before.is_empty() {
+                    return before.to_string();
+                }
+            }
+        }
+    }
+
+    // Fallback: strip known tags and return what's left
+    let (title, _, _, _) = parse_movie_name(filename);
+    title
 }
 
 /// Parse an LLM JSON response into `LlmClassifyResult`, handling multiple
@@ -1120,4 +1447,719 @@ fn detect_audiobook_groups(
     }
 
     groups
+}
+
+// ─── TV Show grouping ────────────────────────────────────────────────
+
+/// Detect TV show groups from files classified as media that contain S##E## patterns.
+fn detect_tv_show_groups(
+    files: &[FileEntry],
+    results: &[FileClassificationResult],
+) -> Vec<TvShowGroup> {
+    let video_exts: std::collections::HashSet<&str> =
+        crate::constants::VIDEO_EXTENSIONS.iter().copied().collect();
+    let subtitle_exts: std::collections::HashSet<&str> = crate::constants::SUBTITLE_EXTENSIONS
+        .iter()
+        .copied()
+        .collect();
+
+    // Collect media files that have S##E## patterns
+    type EpisodeEntry = (usize, u32, u32, Option<u32>, Option<String>);
+    let mut show_episodes: HashMap<String, Vec<EpisodeEntry>> = HashMap::new();
+
+    for (i, result) in results.iter().enumerate() {
+        if !matches!(result.service, ServiceKind::Media) {
+            continue;
+        }
+        let file = &files[i];
+        let ext = file
+            .filename
+            .rsplit('.')
+            .next()
+            .unwrap_or("")
+            .to_lowercase();
+
+        if !video_exts.contains(ext.as_str()) {
+            continue;
+        }
+
+        let combined = format!(
+            "{} {}",
+            file.relative_path.as_deref().unwrap_or(""),
+            file.filename
+        )
+        .to_lowercase();
+
+        if let Some((season, episode, episode_end)) = parse_season_episode(&combined) {
+            // Infer series name from folder or filename
+            let series_name = infer_series_name(file);
+            show_episodes.entry(series_name).or_default().push((
+                i,
+                season,
+                episode,
+                episode_end,
+                parse_episode_title(file),
+            ));
+        }
+    }
+
+    if show_episodes.is_empty() {
+        return vec![];
+    }
+
+    // Build groups and find associated subtitle files
+    let mut groups = Vec::new();
+
+    for (series_name, episodes) in &show_episodes {
+        let video_indices: Vec<usize> = episodes.iter().map(|(idx, ..)| *idx).collect();
+
+        // Find subtitle files in the same folders
+        let video_folders: std::collections::HashSet<String> = video_indices
+            .iter()
+            .filter_map(|&idx| folder_of(&files[idx]))
+            .collect();
+
+        let subtitle_indices: Vec<usize> = files
+            .iter()
+            .enumerate()
+            .filter(|(_, file)| {
+                let ext = file
+                    .filename
+                    .rsplit('.')
+                    .next()
+                    .unwrap_or("")
+                    .to_lowercase();
+                if !subtitle_exts.contains(ext.as_str()) {
+                    return false;
+                }
+                if let Some(folder) = folder_of(file) {
+                    video_folders.contains(&folder)
+                } else {
+                    false
+                }
+            })
+            .map(|(i, _)| i)
+            .collect();
+
+        // Try to extract year from folder structure (e.g. "Breaking Bad (2008)")
+        let year = extract_year_from_folder_or_name(series_name);
+
+        let clean_name = if let Some(ref y) = year {
+            // Strip year from series name
+            let stripped = series_name.replace(&format!("({y})"), "").replace(y, "");
+            stripped.trim().trim_end_matches(" -").trim().to_string()
+        } else {
+            series_name.clone()
+        };
+
+        let mut tv_episodes: Vec<TvEpisode> = episodes
+            .iter()
+            .map(|(idx, season, episode, episode_end, title)| TvEpisode {
+                season: *season,
+                episode: *episode,
+                episode_end: *episode_end,
+                title: title.clone(),
+                file_index: *idx,
+            })
+            .collect();
+
+        // Sort episodes by season then episode number
+        tv_episodes.sort_by(|a, b| a.season.cmp(&b.season).then(a.episode.cmp(&b.episode)));
+
+        let mut all_indices = video_indices;
+        all_indices.extend(&subtitle_indices);
+
+        groups.push(TvShowGroup {
+            series_name: clean_name,
+            year,
+            episodes: tv_episodes,
+            file_indices: all_indices,
+            subtitle_indices,
+        });
+    }
+
+    groups
+}
+
+/// Infer the series name from a file's folder structure or filename.
+fn infer_series_name(file: &FileEntry) -> String {
+    if let Some(ref path) = file.relative_path {
+        let segments: Vec<&str> = path.split('/').collect();
+        if segments.len() >= 2 {
+            // First folder segment is typically the series name
+            return segments[0].to_string();
+        }
+    }
+    // Fall back to parsing from filename
+    parse_series_name_from_filename(&file.filename)
+}
+
+/// Try to parse an episode title from a filename.
+/// Looks for text after S##E## and before quality/source tags.
+fn parse_episode_title(file: &FileEntry) -> Option<String> {
+    let stem = file
+        .filename
+        .rsplit('.')
+        .skip(1)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join(".");
+    let working = if stem.is_empty() {
+        &file.filename
+    } else {
+        &stem
+    };
+
+    let normalized: String = working
+        .chars()
+        .map(|c| if c == '.' || c == '_' { ' ' } else { c })
+        .collect();
+
+    let lower = normalized.to_lowercase();
+
+    // Find end of S##E## pattern
+    if let Some((_, _, _)) = parse_season_episode(&lower) {
+        // Find position after S##E##
+        for i in 0..lower.len().saturating_sub(3) {
+            let bytes = lower.as_bytes();
+            if bytes[i] == b's'
+                && (i == 0 || !bytes[i - 1].is_ascii_alphanumeric())
+                && parse_season_episode(&lower[i..]).is_some()
+            {
+                // Skip past the S##E##(E##) part
+                let mut j = i + 1;
+                // Skip season digits
+                while j < bytes.len() && bytes[j].is_ascii_digit() {
+                    j += 1;
+                }
+                // Skip 'e' + episode digits
+                if j < bytes.len() && bytes[j] == b'e' {
+                    j += 1;
+                    while j < bytes.len() && bytes[j].is_ascii_digit() {
+                        j += 1;
+                    }
+                }
+                // Skip possible -E## for multi-episode
+                if j < bytes.len() && bytes[j] == b'-' {
+                    j += 1;
+                    if j < bytes.len() && bytes[j] == b'e' {
+                        j += 1;
+                        while j < bytes.len() && bytes[j].is_ascii_digit() {
+                            j += 1;
+                        }
+                    }
+                }
+
+                let after = normalized[j..].trim_start_matches([' ', '-']);
+
+                if after.is_empty() {
+                    return None;
+                }
+
+                // Cut at resolution/source/codec tags
+                let after_lower = after.to_lowercase();
+                let mut end = after.len();
+                for tag in crate::constants::RESOLUTION_TAGS
+                    .iter()
+                    .chain(crate::constants::SOURCE_TAGS.iter())
+                    .chain(crate::constants::CODEC_TAGS.iter())
+                {
+                    if let Some(pos) = after_lower.find(tag) {
+                        end = end.min(pos);
+                    }
+                }
+
+                let title = after[..end].trim();
+                if !title.is_empty() {
+                    return Some(title.to_string());
+                }
+                return None;
+            }
+        }
+    }
+
+    None
+}
+
+/// Get the folder path of a file (everything before the last `/`).
+fn folder_of(file: &FileEntry) -> Option<String> {
+    file.relative_path.as_ref().and_then(|p| {
+        let parts: Vec<&str> = p.split('/').collect();
+        if parts.len() >= 2 {
+            Some(parts[..parts.len() - 1].join("/"))
+        } else {
+            None
+        }
+    })
+}
+
+/// Extract a 4-digit year from a string like "Breaking Bad (2008)".
+fn extract_year_from_folder_or_name(name: &str) -> Option<String> {
+    // Check for (year) pattern
+    if let Some(start) = name.find('(') {
+        let rest = &name[start + 1..];
+        if let Some(end) = rest.find(')') {
+            let inside = &rest[..end];
+            if inside.len() == 4 && inside.chars().all(|c| c.is_ascii_digit()) {
+                let y: u32 = inside.parse().unwrap_or(0);
+                if (1920..=2030).contains(&y) {
+                    return Some(inside.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+// ─── Movie grouping ─────────────────────────────────────────────────
+
+/// Detect movie groups from media files that aren't part of TV shows.
+fn detect_movie_groups(
+    files: &[FileEntry],
+    results: &[FileClassificationResult],
+    tv_show_file_indices: &std::collections::HashSet<usize>,
+) -> Vec<MovieGroup> {
+    let video_exts: std::collections::HashSet<&str> =
+        crate::constants::VIDEO_EXTENSIONS.iter().copied().collect();
+    let subtitle_exts: std::collections::HashSet<&str> = crate::constants::SUBTITLE_EXTENSIONS
+        .iter()
+        .copied()
+        .collect();
+
+    let mut groups = Vec::new();
+
+    for (i, result) in results.iter().enumerate() {
+        if !matches!(result.service, ServiceKind::Media) {
+            continue;
+        }
+        if tv_show_file_indices.contains(&i) {
+            continue;
+        }
+
+        let file = &files[i];
+        let ext = file
+            .filename
+            .rsplit('.')
+            .next()
+            .unwrap_or("")
+            .to_lowercase();
+
+        if !video_exts.contains(ext.as_str()) {
+            continue;
+        }
+
+        let (title, year, resolution, source) = parse_movie_name(&file.filename);
+
+        if title.is_empty() {
+            continue;
+        }
+
+        // Find subtitle files in the same folder
+        let movie_folder = folder_of(file);
+        let subtitle_indices: Vec<usize> = if let Some(ref folder) = movie_folder {
+            files
+                .iter()
+                .enumerate()
+                .filter(|(idx, f)| {
+                    *idx != i
+                        && !tv_show_file_indices.contains(idx)
+                        && subtitle_exts.contains(
+                            f.filename
+                                .rsplit('.')
+                                .next()
+                                .unwrap_or("")
+                                .to_lowercase()
+                                .as_str(),
+                        )
+                        && folder_of(f).as_ref() == Some(folder)
+                })
+                .map(|(idx, _)| idx)
+                .collect()
+        } else {
+            vec![]
+        };
+
+        // Find extra files (nfo, images) in the same folder
+        let extra_exts = ["nfo", "jpg", "jpeg", "png", "webp"];
+        let extra_indices: Vec<usize> = if let Some(ref folder) = movie_folder {
+            files
+                .iter()
+                .enumerate()
+                .filter(|(idx, f)| {
+                    *idx != i
+                        && !tv_show_file_indices.contains(idx)
+                        && !subtitle_indices.contains(idx)
+                        && extra_exts.contains(
+                            &f.filename
+                                .rsplit('.')
+                                .next()
+                                .unwrap_or("")
+                                .to_lowercase()
+                                .as_str(),
+                        )
+                        && folder_of(f).as_ref() == Some(folder)
+                })
+                .map(|(idx, _)| idx)
+                .collect()
+        } else {
+            vec![]
+        };
+
+        groups.push(MovieGroup {
+            title,
+            year,
+            resolution,
+            source,
+            file_index: i,
+            subtitle_indices,
+            extra_indices,
+        });
+    }
+
+    groups
+}
+
+// ─── Music grouping ─────────────────────────────────────────────────
+
+/// Detect music album groups from media files that have music-like folder structures.
+fn detect_music_groups(
+    files: &[FileEntry],
+    results: &[FileClassificationResult],
+) -> Vec<MusicAlbumGroup> {
+    let audio_exts: std::collections::HashSet<&str> = crate::constants::MUSIC_AUDIO_EXTENSIONS
+        .iter()
+        .copied()
+        .collect();
+
+    // Collect audio files classified as media that look like music
+    // (i.e., in folders with music keywords, or not in audiobook folders)
+    let mut folder_groups: HashMap<String, Vec<usize>> = HashMap::new();
+
+    for (i, result) in results.iter().enumerate() {
+        if !matches!(result.service, ServiceKind::Media) {
+            continue;
+        }
+        let file = &files[i];
+        let ext = file
+            .filename
+            .rsplit('.')
+            .next()
+            .unwrap_or("")
+            .to_lowercase();
+
+        if !audio_exts.contains(ext.as_str()) {
+            continue;
+        }
+
+        let folder_key = match &file.relative_path {
+            Some(path) => {
+                let parts: Vec<&str> = path.split('/').collect();
+                if parts.len() >= 2 {
+                    parts[..parts.len() - 1].join("/")
+                } else {
+                    "ungrouped".to_string()
+                }
+            }
+            None => "ungrouped".to_string(),
+        };
+        folder_groups.entry(folder_key).or_default().push(i);
+    }
+
+    if folder_groups.is_empty() {
+        return vec![];
+    }
+
+    let mut groups = Vec::new();
+
+    for (folder_path, indices) in &folder_groups {
+        if indices.is_empty() {
+            continue;
+        }
+
+        // Infer artist/album from folder structure
+        let segments: Vec<&str> = folder_path.split('/').collect();
+        let (artist, album) = match segments.len() {
+            0 | 1 => {
+                // Single folder or ungrouped — use folder name as album
+                if folder_path == "ungrouped" {
+                    (None, "Unknown Album".to_string())
+                } else {
+                    (
+                        None,
+                        segments.last().unwrap_or(&"Unknown Album").to_string(),
+                    )
+                }
+            }
+            2 => {
+                // Artist/Album
+                (Some(segments[0].to_string()), segments[1].to_string())
+            }
+            _ => {
+                // Deeper: take last two segments as Artist/Album
+                let album_idx = segments.len() - 1;
+                let artist_idx = segments.len() - 2;
+                (
+                    Some(segments[artist_idx].to_string()),
+                    segments[album_idx].to_string(),
+                )
+            }
+        };
+
+        // Find cover art in the same folder
+        let cover_index = files
+            .iter()
+            .enumerate()
+            .find(|(_, file)| {
+                if !is_cover_image(&file.filename) {
+                    return false;
+                }
+                if let Some(ref path) = file.relative_path {
+                    let parts: Vec<&str> = path.split('/').collect();
+                    if parts.len() >= 2 {
+                        return parts[..parts.len() - 1].join("/") == *folder_path;
+                    }
+                }
+                false
+            })
+            .map(|(idx, _)| idx);
+
+        // Extract year from album folder name (e.g., "2019 - Album Name" or "(2019)")
+        let year = extract_year_from_folder_or_name(&album).or_else(|| {
+            // Check for "YYYY - Album" pattern
+            let trimmed = album.trim();
+            if trimmed.len() >= 4 && trimmed[..4].chars().all(|c| c.is_ascii_digit()) {
+                let y: u32 = trimmed[..4].parse().unwrap_or(0);
+                if (1920..=2030).contains(&y) {
+                    return Some(trimmed[..4].to_string());
+                }
+            }
+            None
+        });
+
+        groups.push(MusicAlbumGroup {
+            album,
+            artist,
+            year,
+            file_indices: indices.clone(),
+            cover_index,
+            probe_data: None,
+        });
+    }
+
+    groups
+}
+
+// ─── Reading grouping ───────────────────────────────────────────────
+
+/// Detect reading groups from files classified as reading.
+fn detect_reading_groups(
+    files: &[FileEntry],
+    results: &[FileClassificationResult],
+) -> Vec<ReadingGroup> {
+    let reading_exts: std::collections::HashSet<&str> = crate::constants::EBOOK_EXTENSIONS
+        .iter()
+        .chain(crate::constants::COMIC_EXTENSIONS.iter())
+        .copied()
+        .collect();
+
+    // Collect reading files
+    let mut folder_groups: HashMap<String, Vec<usize>> = HashMap::new();
+
+    for (i, result) in results.iter().enumerate() {
+        if !matches!(result.service, ServiceKind::Reading) {
+            continue;
+        }
+        let file = &files[i];
+        let ext = file
+            .filename
+            .rsplit('.')
+            .next()
+            .unwrap_or("")
+            .to_lowercase();
+
+        // Also include PDFs that were classified as reading by the LLM
+        if !reading_exts.contains(ext.as_str()) && ext != "pdf" {
+            continue;
+        }
+
+        let folder_key = match &file.relative_path {
+            Some(path) => {
+                let parts: Vec<&str> = path.split('/').collect();
+                if parts.len() >= 2 {
+                    // Use first folder segment as series name
+                    parts[0].to_string()
+                } else {
+                    infer_reading_series(&file.filename)
+                }
+            }
+            None => infer_reading_series(&file.filename),
+        };
+        folder_groups.entry(folder_key).or_default().push(i);
+    }
+
+    if folder_groups.is_empty() {
+        return vec![];
+    }
+
+    let mut groups = Vec::new();
+
+    for (series_name, indices) in &folder_groups {
+        let mut volumes: Vec<ReadingVolume> = indices
+            .iter()
+            .map(|&idx| {
+                let file = &files[idx];
+                let ext = file
+                    .filename
+                    .rsplit('.')
+                    .next()
+                    .unwrap_or("")
+                    .to_lowercase();
+
+                let (number, title, is_special) = parse_reading_volume(&file.filename);
+
+                ReadingVolume {
+                    number,
+                    title,
+                    format: ext,
+                    is_special,
+                    file_index: idx,
+                }
+            })
+            .collect();
+
+        // Sort by volume number
+        volumes.sort_by(|a, b| {
+            let num_a = a
+                .number
+                .as_ref()
+                .and_then(|n| n.parse::<f64>().ok())
+                .unwrap_or(f64::MAX);
+            let num_b = b
+                .number
+                .as_ref()
+                .and_then(|n| n.parse::<f64>().ok())
+                .unwrap_or(f64::MAX);
+            num_a
+                .partial_cmp(&num_b)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        groups.push(ReadingGroup {
+            series_name: series_name.clone(),
+            volumes,
+            file_indices: indices.clone(),
+        });
+    }
+
+    groups
+}
+
+/// Infer a series name from a reading filename by stripping volume/issue indicators.
+fn infer_reading_series(filename: &str) -> String {
+    let stem = filename
+        .rsplit('.')
+        .skip(1)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join(".");
+    let working = if stem.is_empty() { filename } else { &stem };
+
+    let normalized: String = working
+        .chars()
+        .map(|c| if c == '_' { ' ' } else { c })
+        .collect();
+
+    let lower = normalized.to_lowercase();
+
+    // Strip volume indicators and everything after
+    for prefix in crate::constants::READING_VOLUME_PREFIXES {
+        if let Some(pos) = lower.find(prefix) {
+            let before = normalized[..pos].trim();
+            if !before.is_empty() {
+                return before.trim_end_matches([' ', '-', '_']).to_string();
+            }
+        }
+    }
+
+    // Strip trailing numbers (e.g., "Series Name 01")
+    let trimmed = normalized.trim_end_matches(|c: char| c.is_ascii_digit() || c == ' ' || c == '.');
+    if !trimmed.is_empty() && trimmed.len() < normalized.len() {
+        return trimmed.trim_end_matches([' ', '-', '_']).to_string();
+    }
+
+    normalized
+}
+
+/// Parse volume/issue number and title from a reading filename.
+fn parse_reading_volume(filename: &str) -> (Option<String>, Option<String>, bool) {
+    let stem = filename
+        .rsplit('.')
+        .skip(1)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join(".");
+    let working = if stem.is_empty() { filename } else { &stem };
+
+    let normalized: String = working
+        .chars()
+        .map(|c| if c == '_' { ' ' } else { c })
+        .collect();
+
+    let lower = normalized.to_lowercase();
+
+    // Check for special markers
+    let is_special = crate::constants::READING_SPECIAL_MARKERS
+        .iter()
+        .any(|marker| {
+            lower
+                .split(|c: char| !c.is_ascii_alphanumeric())
+                .any(|word| word == *marker)
+        });
+
+    // Try to extract volume number
+    for prefix in crate::constants::READING_VOLUME_PREFIXES {
+        if let Some(pos) = lower.find(prefix) {
+            let after = &lower[pos + prefix.len()..];
+            let num: String = after
+                .chars()
+                .take_while(|c| c.is_ascii_digit() || *c == '.')
+                .collect();
+            if !num.is_empty() {
+                let title = after[num.len()..]
+                    .trim()
+                    .trim_start_matches(['-', ' '])
+                    .to_string();
+                let title = if title.is_empty() { None } else { Some(title) };
+                return (
+                    Some(num.trim_end_matches('.').to_string()),
+                    title,
+                    is_special,
+                );
+            }
+        }
+    }
+
+    // Try trailing number: "Series Name 01" or "Series Name - 01"
+    let parts: Vec<&str> = normalized.split_whitespace().collect();
+    if let Some(last) = parts.last() {
+        let num: String = last
+            .chars()
+            .take_while(|c| c.is_ascii_digit() || *c == '.')
+            .collect();
+        if !num.is_empty() && num.len() == last.len() {
+            return (
+                Some(num.trim_end_matches('.').to_string()),
+                None,
+                is_special,
+            );
+        }
+    }
+
+    (None, None, is_special)
 }

@@ -11,6 +11,13 @@ export type {
   Audiobook,
   Chapter,
   Series,
+  Volume,
+  ChapterInfo,
+  ReaderChapterInfo,
+  PageDimension,
+  BookInfo,
+  BookTocEntry,
+  ReadingProgress,
   UserFile,
 } from './types/models';
 
@@ -39,6 +46,13 @@ export type {
   AudiobookGroup,
   AudiobookProbeData,
   AudioFileProbe,
+  TvShowGroup,
+  TvEpisode,
+  MovieGroup,
+  MusicAlbumGroup,
+  MusicProbeData,
+  ReadingGroup,
+  ReadingVolume,
 } from './types/classify';
 
 export {

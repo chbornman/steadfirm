@@ -9,7 +9,15 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
-import type { ServiceName, AudiobookGroup, ClassifyDebugInfo } from '@steadfirm/shared';
+import type {
+  ServiceName,
+  AudiobookGroup,
+  TvShowGroup,
+  MovieGroup,
+  MusicAlbumGroup,
+  ReadingGroup,
+  ClassifyDebugInfo,
+} from '@steadfirm/shared';
 import { parseSSEBuffer, extractPartialObjects } from '@/lib/sse';
 import { useDebugStore } from '@/stores/debug';
 
@@ -82,6 +90,10 @@ interface SseDoneData {
   /** Authoritative classifications (global indices). */
   classifications: SseClassificationData[];
   audiobookGroups: AudiobookGroup[];
+  tvShowGroups?: TvShowGroup[];
+  movieGroups?: MovieGroup[];
+  musicGroups?: MusicAlbumGroup[];
+  readingGroups?: ReadingGroup[];
   debugInfo?: ClassifyDebugInfo;
 }
 
@@ -103,6 +115,14 @@ export interface UseStreamingClassifyReturn {
   pendingCount: number;
   /** Audiobook groups (available after done). */
   audiobookGroups: AudiobookGroup[];
+  /** TV show groups (available after done). */
+  tvShowGroups: TvShowGroup[];
+  /** Movie groups (available after done). */
+  movieGroups: MovieGroup[];
+  /** Music album groups (available after done). */
+  musicGroups: MusicAlbumGroup[];
+  /** Reading groups (available after done). */
+  readingGroups: ReadingGroup[];
   /** Debug info from the LLM call (available after done). */
   debugInfo: ClassifyDebugInfo | null;
   /** Error message if phase=error. */
@@ -120,6 +140,10 @@ export function useStreamingClassify(): UseStreamingClassifyReturn {
   const [classifications, setClassifications] = useState<Map<number, StreamedClassification>>(new Map());
   const [pendingCount, setPendingCount] = useState(0);
   const [audiobookGroups, setAudiobookGroups] = useState<AudiobookGroup[]>([]);
+  const [tvShowGroups, setTvShowGroups] = useState<TvShowGroup[]>([]);
+  const [movieGroups, setMovieGroups] = useState<MovieGroup[]>([]);
+  const [musicGroups, setMusicGroups] = useState<MusicAlbumGroup[]>([]);
+  const [readingGroups, setReadingGroups] = useState<ReadingGroup[]>([]);
   const [debugInfo, setDebugInfo] = useState<ClassifyDebugInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -152,6 +176,10 @@ export function useStreamingClassify(): UseStreamingClassifyReturn {
       if (doneData) {
         deferredDoneRef.current = null;
         setAudiobookGroups(doneData.audiobookGroups);
+        setTvShowGroups(doneData.tvShowGroups ?? []);
+        setMovieGroups(doneData.movieGroups ?? []);
+        setMusicGroups(doneData.musicGroups ?? []);
+        setReadingGroups(doneData.readingGroups ?? []);
         if (doneData.debugInfo) {
           setDebugInfo(doneData.debugInfo);
         }
@@ -220,6 +248,10 @@ export function useStreamingClassify(): UseStreamingClassifyReturn {
     setClassifications(new Map());
     setPendingCount(0);
     setAudiobookGroups([]);
+    setTvShowGroups([]);
+    setMovieGroups([]);
+    setMusicGroups([]);
+    setReadingGroups([]);
     setDebugInfo(null);
     setError(null);
   }, []);
@@ -252,6 +284,10 @@ export function useStreamingClassify(): UseStreamingClassifyReturn {
       setClassifications(new Map());
       setPendingCount(0);
       setAudiobookGroups([]);
+      setTvShowGroups([]);
+      setMovieGroups([]);
+      setMusicGroups([]);
+      setReadingGroups([]);
       setDebugInfo(null);
       setError(null);
 
@@ -442,6 +478,10 @@ export function useStreamingClassify(): UseStreamingClassifyReturn {
                     deferredDoneRef.current = data;
                   } else {
                     setAudiobookGroups(data.audiobookGroups);
+                    setTvShowGroups(data.tvShowGroups ?? []);
+                    setMovieGroups(data.movieGroups ?? []);
+                    setMusicGroups(data.musicGroups ?? []);
+                    setReadingGroups(data.readingGroups ?? []);
                     if (data.debugInfo) {
                       setDebugInfo(data.debugInfo);
                     }
@@ -513,6 +553,10 @@ export function useStreamingClassify(): UseStreamingClassifyReturn {
     classifications,
     pendingCount,
     audiobookGroups,
+    tvShowGroups,
+    movieGroups,
+    musicGroups,
+    readingGroups,
     debugInfo,
     error,
     cancel,

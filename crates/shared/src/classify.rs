@@ -55,6 +55,22 @@ pub struct ClassifyResponse {
     /// correct `Author/Title/` folder structure for Audiobookshelf.
     pub audiobook_groups: Vec<AudiobookGroup>,
 
+    /// Detected TV show groupings.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tv_show_groups: Vec<TvShowGroup>,
+
+    /// Detected movie groupings.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub movie_groups: Vec<MovieGroup>,
+
+    /// Detected music album groupings.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub music_groups: Vec<MusicAlbumGroup>,
+
+    /// Detected reading/ebook groupings.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reading_groups: Vec<ReadingGroup>,
+
     /// LLM debug info — only populated when AI classification was used.
     /// Contains the prompts sent and raw response received so the
     /// dev-debug panel can display the full conversation.
@@ -196,6 +212,182 @@ pub struct AudioFileProbe {
     pub title: Option<String>,
     /// Whether this file has an embedded cover image.
     pub has_embedded_cover: bool,
+}
+
+// ─── TV Show grouping ────────────────────────────────────────────────
+
+/// A set of files that belong to the same TV show.
+///
+/// Used to create the `Shows/Series Name (year)/Season ##/` folder
+/// structure that Jellyfin expects.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TvShowGroup {
+    /// Inferred series title (e.g. `Breaking Bad`).
+    pub series_name: String,
+
+    /// Inferred year (e.g. `2008`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub year: Option<String>,
+
+    /// Episodes detected in this group.
+    pub episodes: Vec<TvEpisode>,
+
+    /// Indices into the request's `files` array for all files in this show.
+    pub file_indices: Vec<usize>,
+
+    /// Indices for subtitle files associated with this show.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub subtitle_indices: Vec<usize>,
+}
+
+/// A single episode parsed from a filename.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TvEpisode {
+    /// Season number.
+    pub season: u32,
+
+    /// Episode number.
+    pub episode: u32,
+
+    /// Optional end episode for multi-episode files (e.g. S01E01-E02).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub episode_end: Option<u32>,
+
+    /// Episode title if parseable from filename.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+
+    /// Index into the request's `files` array.
+    pub file_index: usize,
+}
+
+// ─── Movie grouping ─────────────────────────────────────────────────
+
+/// A single movie detected from uploaded files.
+///
+/// Used to create the `Movies/Movie Name (year)/` folder structure
+/// that Jellyfin expects.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MovieGroup {
+    /// Inferred movie title (e.g. `The Matrix`).
+    pub title: String,
+
+    /// Inferred year (e.g. `1999`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub year: Option<String>,
+
+    /// Video resolution (e.g. `1080p`, `4K`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolution: Option<String>,
+
+    /// Source/quality info (e.g. `BluRay`, `WEB-DL`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+
+    /// Index of the main video file.
+    pub file_index: usize,
+
+    /// Indices for subtitle files associated with this movie.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub subtitle_indices: Vec<usize>,
+
+    /// Indices for other associated files (cover art, NFO, etc.).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub extra_indices: Vec<usize>,
+}
+
+// ─── Music grouping ─────────────────────────────────────────────────
+
+/// A set of files that belong to the same music album.
+///
+/// Used to create the `Music/Artist/Album/` folder structure
+/// that Jellyfin expects.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MusicAlbumGroup {
+    /// Album title (from folder name or ID3).
+    pub album: String,
+
+    /// Artist name (from folder name or ID3).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artist: Option<String>,
+
+    /// Album year.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub year: Option<String>,
+
+    /// Indices into the request's `files` array.
+    pub file_indices: Vec<usize>,
+
+    /// Index of cover art file if detected.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cover_index: Option<usize>,
+
+    /// Probe data from ffprobe (populated after probing).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub probe_data: Option<MusicProbeData>,
+}
+
+/// Metadata extracted from music file ID3/ffprobe tags.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MusicProbeData {
+    /// Album tag.
+    pub album: Option<String>,
+    /// Artist/album-artist tag.
+    pub artist: Option<String>,
+    /// Genre tag.
+    pub genre: Option<String>,
+    /// Year/date tag.
+    pub year: Option<String>,
+    /// Total duration in seconds.
+    pub total_duration_secs: f64,
+    /// Per-file probe results.
+    pub tracks: Vec<AudioFileProbe>,
+}
+
+// ─── Reading grouping ───────────────────────────────────────────────
+
+/// A set of files that belong to the same reading series.
+///
+/// Used to create the `Series Name/` folder structure with proper
+/// volume naming that Kavita expects.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadingGroup {
+    /// Series name.
+    pub series_name: String,
+
+    /// Individual volumes/issues in this group.
+    pub volumes: Vec<ReadingVolume>,
+
+    /// Indices into the request's `files` array.
+    pub file_indices: Vec<usize>,
+}
+
+/// A single volume/issue in a reading group.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadingVolume {
+    /// Volume/issue number (e.g. `1`, `2.5`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub number: Option<String>,
+
+    /// Volume title if parseable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+
+    /// Format: `epub`, `cbz`, `pdf`, etc.
+    pub format: String,
+
+    /// Whether this is a special (SP marker or Specials folder).
+    pub is_special: bool,
+
+    /// Index into the request's `files` array.
+    pub file_index: usize,
 }
 
 // ─── LLM extraction target ──────────────────────────────────────────

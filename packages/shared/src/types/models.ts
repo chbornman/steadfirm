@@ -116,6 +116,97 @@ export interface Series {
   pagesRead: number;
 }
 
+// ─── Reader types (from Kavita) ──────────────────────────────────────
+
+export interface Volume {
+  id: number;
+  minNumber: number;
+  maxNumber: number;
+  name: string | null;
+  pages: number;
+  pagesRead: number;
+  seriesId: number;
+  chapters: ChapterInfo[];
+  wordCount: number;
+}
+
+/** Kavita chapter within a volume. */
+export interface ChapterInfo {
+  id: number;
+  range: string | null;
+  minNumber: number;
+  maxNumber: number;
+  sortOrder: number;
+  pages: number;
+  pagesRead: number;
+  isSpecial: boolean;
+  title: string | null;
+  titleName: string | null;
+  volumeId: number;
+  volumeTitle: string | null;
+  format: number | null;
+}
+
+/** Returned by /chapter/{id}/info — metadata for opening a reader. */
+export interface ReaderChapterInfo {
+  chapterNumber: string;
+  volumeNumber: string;
+  volumeId: number;
+  seriesName: string;
+  seriesFormat: number;
+  seriesId: number;
+  libraryId: number;
+  libraryType: number;
+  chapterTitle: string | null;
+  pages: number;
+  fileName: string;
+  isSpecial: boolean;
+  subtitle: string;
+  title: string;
+  pageDimensions: PageDimension[] | null;
+}
+
+export interface PageDimension {
+  width: number;
+  height: number;
+  pageNumber: number;
+  isWide: boolean;
+}
+
+/** Returned by /book/{id}/info — EPUB/PDF metadata. */
+export interface BookInfo {
+  bookTitle: string;
+  seriesId: number;
+  volumeId: number;
+  seriesFormat: number;
+  seriesName: string;
+  chapterNumber: string;
+  volumeNumber: string;
+  libraryId: number;
+  pages: number;
+  isSpecial: boolean;
+  chapterTitle: string;
+}
+
+/** EPUB table of contents entry. */
+export interface BookTocEntry {
+  title: string;
+  part: string | null;
+  page: number;
+  children: BookTocEntry[];
+}
+
+/** Reading progress for a chapter. */
+export interface ReadingProgress {
+  volumeId: number;
+  chapterId: number;
+  pageNum: number;
+  seriesId: number;
+  libraryId: number;
+  bookScrollId: string | null;
+  lastModifiedUtc: string;
+}
+
 export interface UserFile {
   id: string;
   filename: string;

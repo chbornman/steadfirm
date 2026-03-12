@@ -31,3 +31,4 @@ hex = { workspace = true }
 regex-lite = { workspace = true }
 async-stream = { workspace = true }
 futures = { workspace = true }
+urlencoding = "2.1.3"

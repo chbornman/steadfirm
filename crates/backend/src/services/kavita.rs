@@ -140,6 +140,234 @@ impl KavitaClient {
         Ok(())
     }
 
+    // ─── Reader endpoints ─────────────────────────────────────────────
+
+    /// Get volumes (with nested chapters) for a series.
+    pub async fn get_volumes(&self, api_key: &str, series_id: i64) -> Result<Value, AppError> {
+        let resp = self
+            .request_api_key(
+                reqwest::Method::GET,
+                &format!("/api/Series/volumes?seriesId={series_id}"),
+                api_key,
+            )
+            .send()
+            .await?;
+        let resp = check_response("kavita", resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    /// Get the continue reading point for a series.
+    pub async fn continue_point(&self, api_key: &str, series_id: i64) -> Result<Value, AppError> {
+        let resp = self
+            .request_api_key(
+                reqwest::Method::GET,
+                &format!("/api/Reader/continue-point?seriesId={series_id}"),
+                api_key,
+            )
+            .send()
+            .await?;
+        let resp = check_response("kavita", resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    /// Get chapter info (caches images server-side, returns metadata).
+    pub async fn chapter_info(
+        &self,
+        api_key: &str,
+        chapter_id: i64,
+        include_dimensions: bool,
+    ) -> Result<Value, AppError> {
+        let resp = self
+            .request_api_key(
+                reqwest::Method::GET,
+                &format!(
+                    "/api/Reader/chapter-info?chapterId={chapter_id}&includeDimensions={include_dimensions}"
+                ),
+                api_key,
+            )
+            .send()
+            .await?;
+        let resp = check_response("kavita", resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    /// Get a page image for a comic/manga chapter.
+    pub async fn page_image(
+        &self,
+        api_key: &str,
+        chapter_id: i64,
+        page: u32,
+    ) -> Result<reqwest::Response, AppError> {
+        let resp = self
+            .request_api_key(
+                reqwest::Method::GET,
+                &format!("/api/Reader/image?chapterId={chapter_id}&page={page}&extractPdf=false"),
+                api_key,
+            )
+            .send()
+            .await?;
+        let resp = check_response("kavita", resp).await?;
+        Ok(resp)
+    }
+
+    /// Get the raw PDF file for a chapter.
+    pub async fn pdf_file(
+        &self,
+        api_key: &str,
+        chapter_id: i64,
+    ) -> Result<reqwest::Response, AppError> {
+        let resp = self
+            .request_api_key(
+                reqwest::Method::GET,
+                &format!("/api/Reader/pdf?chapterId={chapter_id}&extractPdf=false"),
+                api_key,
+            )
+            .send()
+            .await?;
+        let resp = check_response("kavita", resp).await?;
+        Ok(resp)
+    }
+
+    /// Get EPUB book info (page count, metadata).
+    pub async fn book_info(&self, api_key: &str, chapter_id: i64) -> Result<Value, AppError> {
+        let resp = self
+            .request_api_key(
+                reqwest::Method::GET,
+                &format!("/api/Book/{chapter_id}/book-info"),
+                api_key,
+            )
+            .send()
+            .await?;
+        let resp = check_response("kavita", resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    /// Get EPUB table of contents.
+    pub async fn book_chapters(&self, api_key: &str, chapter_id: i64) -> Result<Value, AppError> {
+        let resp = self
+            .request_api_key(
+                reqwest::Method::GET,
+                &format!("/api/Book/{chapter_id}/chapters"),
+                api_key,
+            )
+            .send()
+            .await?;
+        let resp = check_response("kavita", resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    /// Get a rendered EPUB page as scoped HTML.
+    pub async fn book_page(
+        &self,
+        api_key: &str,
+        chapter_id: i64,
+        page: u32,
+    ) -> Result<String, AppError> {
+        let resp = self
+            .request_api_key(
+                reqwest::Method::GET,
+                &format!("/api/Book/{chapter_id}/book-page?page={page}"),
+                api_key,
+            )
+            .send()
+            .await?;
+        let resp = check_response("kavita", resp).await?;
+        Ok(resp.text().await?)
+    }
+
+    /// Get an EPUB embedded resource (image, font, CSS).
+    pub async fn book_resource(
+        &self,
+        api_key: &str,
+        chapter_id: i64,
+        file: &str,
+    ) -> Result<reqwest::Response, AppError> {
+        let resp = self
+            .request_api_key(
+                reqwest::Method::GET,
+                &format!(
+                    "/api/Book/{chapter_id}/book-resources?file={}",
+                    urlencoding::encode(file)
+                ),
+                api_key,
+            )
+            .send()
+            .await?;
+        let resp = check_response("kavita", resp).await?;
+        Ok(resp)
+    }
+
+    /// Get reading progress for a chapter.
+    pub async fn get_progress(&self, api_key: &str, chapter_id: i64) -> Result<Value, AppError> {
+        let resp = self
+            .request_api_key(
+                reqwest::Method::GET,
+                &format!("/api/Reader/get-progress?chapterId={chapter_id}"),
+                api_key,
+            )
+            .send()
+            .await?;
+        let resp = check_response("kavita", resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    /// Save reading progress.
+    pub async fn save_progress(&self, api_key: &str, progress: &Value) -> Result<(), AppError> {
+        let resp = self
+            .request_api_key(reqwest::Method::POST, "/api/Reader/progress", api_key)
+            .json(progress)
+            .send()
+            .await?;
+        check_response("kavita", resp).await?;
+        Ok(())
+    }
+
+    /// Get next chapter ID in reading order.
+    pub async fn next_chapter(
+        &self,
+        api_key: &str,
+        series_id: i64,
+        volume_id: i64,
+        chapter_id: i64,
+    ) -> Result<i64, AppError> {
+        let resp = self
+            .request_api_key(
+                reqwest::Method::GET,
+                &format!(
+                    "/api/Reader/next-chapter?seriesId={series_id}&volumeId={volume_id}&currentChapterId={chapter_id}"
+                ),
+                api_key,
+            )
+            .send()
+            .await?;
+        let resp = check_response("kavita", resp).await?;
+        let id: i64 = resp.json().await?;
+        Ok(id)
+    }
+
+    /// Get previous chapter ID in reading order.
+    pub async fn prev_chapter(
+        &self,
+        api_key: &str,
+        series_id: i64,
+        volume_id: i64,
+        chapter_id: i64,
+    ) -> Result<i64, AppError> {
+        let resp = self
+            .request_api_key(
+                reqwest::Method::GET,
+                &format!(
+                    "/api/Reader/prev-chapter?seriesId={series_id}&volumeId={volume_id}&currentChapterId={chapter_id}"
+                ),
+                api_key,
+            )
+            .send()
+            .await?;
+        let resp = check_response("kavita", resp).await?;
+        let id: i64 = resp.json().await?;
+        Ok(id)
+    }
+
     /// Trigger a scan of all libraries.
     pub async fn scan_all_libraries(&self, api_key: &str) -> Result<(), AppError> {
         let resp = self

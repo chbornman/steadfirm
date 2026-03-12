@@ -14,6 +14,8 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", post(upload_file))
         .route("/audiobook", post(upload_audiobook))
+        .route("/media", post(upload_media))
+        .route("/reading", post(upload_reading))
 }
 
 async fn upload_file(
@@ -419,6 +421,316 @@ async fn upload_audiobook(
         "status": "uploaded",
         "service": "audiobooks",
         "title": title,
+        "fileCount": file_count,
+    })))
+}
+
+/// POST /api/v1/upload/media
+///
+/// Upload media files (TV shows, movies, music) with structured folder paths.
+/// Creates the correct folder structure for Jellyfin before writing files.
+///
+/// Form fields:
+///   - `media_type` (required): "tv_show", "movie", or "music"
+///   - `title` (required): Show name, movie title, or album name
+///   - `year` (optional): Release year
+///   - `artist` (optional): For music — artist name
+///   - `season` (optional): For TV shows — season number
+///   - Files: numbered keys (0, 1, 2...) with the actual files
+///   - File paths: `path_0`, `path_1`, etc. — the relative path to write each file to
+async fn upload_media(
+    State(state): State<AppState>,
+    user: AuthUser,
+    mut multipart: Multipart,
+) -> Result<Json<Value>, AppError> {
+    let _cred = user
+        .credentials
+        .jellyfin
+        .ok_or(AppError::ServiceUnavailable("media not provisioned".into()))?;
+
+    let mut media_type = String::new();
+    let mut title = String::new();
+    let mut year: Option<String> = None;
+    let mut artist: Option<String> = None;
+    let mut season: Option<String> = None;
+    let mut files: Vec<(String, Vec<u8>, String)> = Vec::new();
+    let mut file_paths: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("multipart error: {e}")))?
+    {
+        let field_name = field.name().unwrap_or("").to_string();
+        match field_name.as_str() {
+            "media_type" => {
+                media_type = field
+                    .text()
+                    .await
+                    .map_err(|e| AppError::BadRequest(format!("read error: {e}")))?;
+            }
+            "title" => {
+                title = field
+                    .text()
+                    .await
+                    .map_err(|e| AppError::BadRequest(format!("read error: {e}")))?;
+            }
+            "year" => {
+                let text = field
+                    .text()
+                    .await
+                    .map_err(|e| AppError::BadRequest(format!("read error: {e}")))?;
+                if !text.is_empty() {
+                    year = Some(text);
+                }
+            }
+            "artist" => {
+                let text = field
+                    .text()
+                    .await
+                    .map_err(|e| AppError::BadRequest(format!("read error: {e}")))?;
+                if !text.is_empty() {
+                    artist = Some(text);
+                }
+            }
+            "season" => {
+                let text = field
+                    .text()
+                    .await
+                    .map_err(|e| AppError::BadRequest(format!("read error: {e}")))?;
+                if !text.is_empty() {
+                    season = Some(text);
+                }
+            }
+            name if name.starts_with("path_") => {
+                let text = field
+                    .text()
+                    .await
+                    .map_err(|e| AppError::BadRequest(format!("read error: {e}")))?;
+                let idx = name.strip_prefix("path_").unwrap_or("").to_string();
+                file_paths.insert(idx, text);
+            }
+            _ => {
+                // File fields
+                let filename = field.file_name().unwrap_or("file").to_string();
+                let data = field
+                    .bytes()
+                    .await
+                    .map_err(|e| AppError::BadRequest(format!("read error: {e}")))?;
+                let mime = mime_guess::from_path(&filename)
+                    .first_or_octet_stream()
+                    .to_string();
+                files.push((filename, data.to_vec(), mime));
+            }
+        }
+    }
+
+    if title.is_empty() {
+        return Err(AppError::BadRequest("title is required".into()));
+    }
+    if media_type.is_empty() {
+        return Err(AppError::BadRequest("media_type is required".into()));
+    }
+    if files.is_empty() {
+        return Err(AppError::BadRequest("at least one file is required".into()));
+    }
+
+    let file_count = files.len();
+    let total_bytes: usize = files.iter().map(|(_, data, _)| data.len()).sum();
+
+    tracing::info!(
+        user_id = %user.id,
+        media_type = %media_type,
+        title = %title,
+        year = ?year,
+        artist = ?artist,
+        season = ?season,
+        file_count,
+        total_bytes,
+        "media upload started"
+    );
+
+    let year_suffix = year
+        .as_ref()
+        .map(|y| format!(" ({})", y))
+        .unwrap_or_default();
+
+    for (idx, (filename, data, _mime)) in files.iter().enumerate() {
+        let rel_path = file_paths
+            .get(&idx.to_string())
+            .cloned()
+            .unwrap_or_else(|| filename.clone());
+
+        let full_path = match media_type.as_str() {
+            "tv_show" => {
+                let season_dir = season
+                    .as_ref()
+                    .map(|s| format!("Season {}", s.trim_start_matches('0')))
+                    .unwrap_or_else(|| "Season 01".to_string());
+                format!(
+                    "{}/{}/Shows/{}{}/{}/{}",
+                    state.config.media_storage_path,
+                    user.id,
+                    title,
+                    year_suffix,
+                    season_dir,
+                    rel_path,
+                )
+            }
+            "movie" => {
+                format!(
+                    "{}/{}/Movies/{}{}/{}",
+                    state.config.media_storage_path, user.id, title, year_suffix, rel_path,
+                )
+            }
+            "music" => {
+                let artist_dir = artist.as_deref().unwrap_or("Unknown Artist");
+                format!(
+                    "{}/{}/Music/{}/{}/{}",
+                    state.config.media_storage_path, user.id, artist_dir, title, rel_path,
+                )
+            }
+            _ => {
+                return Err(AppError::BadRequest(format!(
+                    "unknown media_type: {}",
+                    media_type
+                )));
+            }
+        };
+
+        // Create parent directory
+        if let Some(parent) = std::path::Path::new(&full_path).parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|e| AppError::Internal(anyhow::anyhow!("mkdir error: {e}")))?;
+        }
+
+        tokio::fs::write(&full_path, data)
+            .await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("write error: {e}")))?;
+    }
+
+    // Trigger Jellyfin library refresh
+    let jf_client = JellyfinClient::new(
+        &state.config.jellyfin_url,
+        &state.config.jellyfin_device_id,
+        state.http.clone(),
+    );
+    let _ = jf_client
+        .refresh_library(&state.config.jellyfin_admin_token)
+        .await;
+
+    tracing::info!(
+        user_id = %user.id,
+        media_type = %media_type,
+        title = %title,
+        file_count,
+        "media upload complete"
+    );
+
+    Ok(Json(json!({
+        "status": "uploaded",
+        "service": "media",
+        "mediaType": media_type,
+        "title": title,
+        "fileCount": file_count,
+    })))
+}
+
+/// POST /api/v1/upload/reading
+///
+/// Upload reading files with structured folder paths for Kavita.
+/// Creates the correct folder structure (Series Name/) before writing files.
+///
+/// Form fields:
+///   - `series_name` (required): Series/collection name
+///   - Files: numbered keys (0, 1, 2...) with the actual files
+async fn upload_reading(
+    State(state): State<AppState>,
+    user: AuthUser,
+    mut multipart: Multipart,
+) -> Result<Json<Value>, AppError> {
+    let cred = user.credentials.kavita.ok_or(AppError::ServiceUnavailable(
+        "reading not provisioned".into(),
+    ))?;
+
+    let mut series_name = String::new();
+    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::BadRequest(format!("multipart error: {e}")))?
+    {
+        let field_name = field.name().unwrap_or("").to_string();
+        match field_name.as_str() {
+            "series_name" => {
+                series_name = field
+                    .text()
+                    .await
+                    .map_err(|e| AppError::BadRequest(format!("read error: {e}")))?;
+            }
+            _ => {
+                let filename = field.file_name().unwrap_or("file").to_string();
+                let data = field
+                    .bytes()
+                    .await
+                    .map_err(|e| AppError::BadRequest(format!("read error: {e}")))?;
+                files.push((filename, data.to_vec()));
+            }
+        }
+    }
+
+    if series_name.is_empty() {
+        return Err(AppError::BadRequest("series_name is required".into()));
+    }
+    if files.is_empty() {
+        return Err(AppError::BadRequest("at least one file is required".into()));
+    }
+
+    let file_count = files.len();
+    let total_bytes: usize = files.iter().map(|(_, data)| data.len()).sum();
+
+    tracing::info!(
+        user_id = %user.id,
+        series_name = %series_name,
+        file_count,
+        total_bytes,
+        "reading upload started"
+    );
+
+    let series_dir = format!(
+        "{}/{}/{}",
+        state.config.reading_storage_path, user.id, series_name
+    );
+    tokio::fs::create_dir_all(&series_dir)
+        .await
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("mkdir error: {e}")))?;
+
+    for (filename, data) in &files {
+        let file_path = format!("{}/{}", series_dir, filename);
+        tokio::fs::write(&file_path, data)
+            .await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("write error: {e}")))?;
+    }
+
+    // Trigger Kavita library scan
+    let kavita_client =
+        crate::services::KavitaClient::new(&state.config.kavita_url, state.http.clone());
+    let _ = kavita_client.scan_all_libraries(&cred.api_key).await;
+
+    tracing::info!(
+        user_id = %user.id,
+        series_name = %series_name,
+        file_count,
+        "reading upload complete"
+    );
+
+    Ok(Json(json!({
+        "status": "uploaded",
+        "service": "reading",
+        "seriesName": series_name,
         "fileCount": file_count,
     })))
 }

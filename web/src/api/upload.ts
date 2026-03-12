@@ -155,6 +155,152 @@ export async function probeAudioFiles(
   return resp.json() as Promise<AudioFileProbe[]>;
 }
 
+// ─── Media upload (TV shows, movies, music) ─────────────────────────
+
+export interface MediaUploadParams {
+  mediaType: 'tv_show' | 'movie' | 'music';
+  title: string;
+  year?: string;
+  artist?: string;
+  season?: string;
+  files: Array<{ file: File; path?: string }>;
+  onProgress?: (percent: number) => void;
+}
+
+interface MediaUploadResult {
+  status: string;
+  service: string;
+  mediaType: string;
+  title: string;
+  fileCount: number;
+}
+
+/** Upload media files with structured folder paths for Jellyfin. */
+export function uploadMedia({
+  mediaType,
+  title,
+  year,
+  artist,
+  season,
+  files,
+  onProgress,
+}: MediaUploadParams): Promise<MediaUploadResult> {
+  const formData = new FormData();
+  formData.append('media_type', mediaType);
+  formData.append('title', title);
+  if (year) formData.append('year', year);
+  if (artist) formData.append('artist', artist);
+  if (season) formData.append('season', season);
+
+  for (let i = 0; i < files.length; i++) {
+    const entry = files[i];
+    if (entry) {
+      formData.append(String(i), entry.file);
+      if (entry.path) {
+        formData.append(`path_${i}`, entry.path);
+      }
+    }
+  }
+
+  const totalMB = (files.reduce((sum, f) => sum + f.file.size, 0) / (1024 * 1024)).toFixed(1);
+  log.info('media upload starting', { mediaType, title, year, artist, season, fileCount: files.length, totalMB });
+
+  return new Promise<MediaUploadResult>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/v1/upload/media');
+    xhr.withCredentials = true;
+
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    });
+
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const result = JSON.parse(xhr.responseText) as MediaUploadResult;
+        log.info('media upload complete', { mediaType, title, status: xhr.status });
+        resolve(result);
+      } else {
+        const body = xhr.responseText.slice(0, 500);
+        log.error('media upload failed', { mediaType, title, status: xhr.status, body });
+        reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText} — ${body}`));
+      }
+    });
+
+    xhr.addEventListener('error', () => {
+      log.error('media upload network error', { mediaType, title });
+      reject(new Error('Upload failed: network error'));
+    });
+
+    xhr.send(formData);
+  });
+}
+
+// ─── Reading upload ──────────────────────────────────────────────────
+
+export interface ReadingUploadParams {
+  seriesName: string;
+  files: File[];
+  onProgress?: (percent: number) => void;
+}
+
+interface ReadingUploadResult {
+  status: string;
+  service: string;
+  seriesName: string;
+  fileCount: number;
+}
+
+/** Upload reading files with structured folder paths for Kavita. */
+export function uploadReading({
+  seriesName,
+  files,
+  onProgress,
+}: ReadingUploadParams): Promise<ReadingUploadResult> {
+  const formData = new FormData();
+  formData.append('series_name', seriesName);
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (file) formData.append(String(i), file);
+  }
+
+  const totalMB = (files.reduce((sum, f) => sum + f.size, 0) / (1024 * 1024)).toFixed(1);
+  log.info('reading upload starting', { seriesName, fileCount: files.length, totalMB });
+
+  return new Promise<ReadingUploadResult>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/v1/upload/reading');
+    xhr.withCredentials = true;
+
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    });
+
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const result = JSON.parse(xhr.responseText) as ReadingUploadResult;
+        log.info('reading upload complete', { seriesName, status: xhr.status });
+        resolve(result);
+      } else {
+        const body = xhr.responseText.slice(0, 500);
+        log.error('reading upload failed', { seriesName, status: xhr.status, body });
+        reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText} — ${body}`));
+      }
+    });
+
+    xhr.addEventListener('error', () => {
+      log.error('reading upload network error', { seriesName });
+      reject(new Error('Upload failed: network error'));
+    });
+
+    xhr.send(formData);
+  });
+}
+
 export async function uploadBatch(files: File[]): Promise<UploadResponse> {
   const formData = new FormData();
   for (const file of files) {

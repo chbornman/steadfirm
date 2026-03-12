@@ -93,3 +93,65 @@ pub const AUDIOBOOK_FILENAME_KEYWORDS: &[&str] = &[
     "abridged",
     "audiobook",
 ];
+
+// ─── TV Show detection ───────────────────────────────────────────────
+
+/// Video file extensions that can be TV shows or movies.
+pub const VIDEO_EXTENSIONS: &[&str] = &[
+    "mp4", "mkv", "avi", "mov", "wmv", "webm", "flv", "m4v", "ts",
+];
+
+/// Subtitle file extensions.
+pub const SUBTITLE_EXTENSIONS: &[&str] = &["srt", "ass", "ssa", "sub", "idx", "vtt"];
+
+/// Scene release resolution tags.
+pub const RESOLUTION_TAGS: &[&str] = &[
+    "2160p", "4k", "uhd", "1080p", "1080i", "720p", "576p", "480p",
+];
+
+/// Scene release source/quality tags.
+pub const SOURCE_TAGS: &[&str] = &[
+    "bluray", "blu-ray", "bdrip", "brrip", "remux", "web-dl", "webdl", "webrip", "web", "hdtv",
+    "pdtv", "dsr", "dvdrip", "dvd", "hdcam", "cam", "ts", "tc",
+];
+
+/// Codec tags to strip from filenames when parsing titles.
+pub const CODEC_TAGS: &[&str] = &[
+    "x264", "x265", "h264", "h265", "hevc", "avc", "xvid", "divx", "aac", "ac3", "dts", "flac",
+    "dd5.1", "7.1", "5.1", "atmos",
+];
+
+// ─── Music detection ─────────────────────────────────────────────────
+
+/// Path keywords that indicate music content (not audiobooks).
+pub const MUSIC_PATH_KEYWORDS: &[&str] = &[
+    "music",
+    "album",
+    "discography",
+    "playlist",
+    "single",
+    "ep",
+    "soundtrack",
+    "ost",
+];
+
+/// Music audio extensions (same as audiobook but context differs).
+pub const MUSIC_AUDIO_EXTENSIONS: &[&str] = &[
+    "mp3", "flac", "ogg", "opus", "aac", "wma", "wav", "m4a", "alac", "ape", "wv",
+];
+
+// ─── Reading detection ───────────────────────────────────────────────
+
+/// Ebook file extensions.
+pub const EBOOK_EXTENSIONS: &[&str] = &["epub", "mobi", "azw", "azw3", "fb2"];
+
+/// Comic/manga file extensions.
+pub const COMIC_EXTENSIONS: &[&str] = &["cbz", "cbr", "cb7", "cbt", "cba"];
+
+/// Volume indicators in filenames for reading content.
+pub const READING_VOLUME_PREFIXES: &[&str] = &[
+    "vol ", "vol. ", "volume ", "v", "tome ", "tome. ", "issue ", "issue. ", "#",
+];
+
+/// Special markers in reading filenames.
+pub const READING_SPECIAL_MARKERS: &[&str] = &["sp", "special", "specials", "oneshot", "one-shot"];

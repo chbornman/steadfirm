@@ -31,6 +31,7 @@ struct FfprobeFormat {
 struct FfprobeStream {
     codec_type: Option<String>,
     /// For video streams that are cover art, this is typically "mjpeg" or "png".
+    #[allow(dead_code)]
     codec_name: Option<String>,
     /// Disposition flags — attached_pic=1 means embedded cover art.
     disposition: Option<FfprobeDisposition>,
