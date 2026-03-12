@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { Layout, Dropdown, Avatar, Grid } from 'antd';
-import { LayoutGroup, motion, AnimatePresence } from 'framer-motion';
+import { LayoutGroup, motion } from 'framer-motion';
 import type { IconWeight } from '@phosphor-icons/react';
 import {
   ImagesSquare,
@@ -72,21 +72,18 @@ interface NavTabProps {
   iconSize?: number;
 }
 
-/** A single nav tab that expands to show its label when active. */
+/** A single nav tab with a sliding pill indicator. All tabs always show their label. */
 function NavTab({ item, isActive, layoutId, onClick, iconSize = 18 }: NavTabProps) {
   const Icon = item.icon;
   return (
-    <motion.button
-      layout
+    <button
       onClick={onClick}
-      transition={navSpring}
       style={{
         position: 'relative',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center',
-        gap: isActive ? 7 : 0,
-        padding: isActive ? '7px 16px' : '7px 12px',
+        gap: 7,
+        padding: '7px 14px',
         border: 'none',
         background: 'transparent',
         cursor: 'pointer',
@@ -97,48 +94,28 @@ function NavTab({ item, isActive, layoutId, onClick, iconSize = 18 }: NavTabProp
         borderRadius: 9999,
         zIndex: 1,
         whiteSpace: 'nowrap',
-        overflow: 'hidden',
+        transition: 'color 0.15s ease, font-weight 0.15s ease',
       }}
     >
-      {/* Animated pill background */}
-      <AnimatePresence>
-        {isActive && (
-          <motion.span
-            layoutId={layoutId}
-            initial={{ opacity: 0, scale: 0.85 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.85 }}
-            transition={navSpring}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              borderRadius: 9999,
-              background: cssVar.accent,
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
-              zIndex: -1,
-            }}
-          />
-        )}
-      </AnimatePresence>
+      {/* Sliding pill background */}
+      {isActive && (
+        <motion.span
+          layoutId={layoutId}
+          transition={navSpring}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: 9999,
+            background: cssVar.accent,
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+            zIndex: -1,
+          }}
+        />
+      )}
 
-      <motion.span layout="position" style={{ display: 'flex', flexShrink: 0 }}>
-        <Icon size={iconSize} weight={isActive ? 'fill' : 'regular'} />
-      </motion.span>
-
-      <AnimatePresence initial={false}>
-        {isActive && (
-          <motion.span
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 'auto', opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ ...navSpring, opacity: { duration: 0.15 } }}
-            style={{ overflow: 'hidden', display: 'inline-block' }}
-          >
-            {item.label}
-          </motion.span>
-        )}
-      </AnimatePresence>
-    </motion.button>
+      <Icon size={iconSize} weight={isActive ? 'fill' : 'regular'} />
+      <span>{item.label}</span>
+    </button>
   );
 }
 
@@ -154,11 +131,13 @@ export function AppLayout({ children }: AppLayoutProps) {
   const musicLastActive = useMusicPlayerStore((s) => s.lastActiveAt);
   const hasAudiobook = useAudiobookPlayerStore((s) => s.book !== null);
   const audiobookLastActive = useAudiobookPlayerStore((s) => s.lastActiveAt);
-  const hasPlayer = hasMusic || hasAudiobook;
-
   // Only one player bar visible — whichever was most recently started/resumed wins
   const showMusic = hasMusic && (!hasAudiobook || musicLastActive >= audiobookLastActive);
   const showAudiobook = hasAudiobook && !showMusic;
+
+  // Only the music player is a full-width bar that needs bottom margin.
+  // The audiobook player floats in the corner and doesn't affect layout.
+  const hasFullWidthPlayer = showMusic;
 
   const debugVisible = useDebugStore((s) => s.visible);
   const debugMargin = !import.meta.env.PROD && debugVisible ? DEBUG_PANEL_WIDTH : 0;
@@ -338,7 +317,6 @@ export function AppLayout({ children }: AppLayoutProps) {
               }}
             >
               <CloudArrowUp size={18} />
-              Upload
             </button>
 
             <Dropdown
@@ -415,7 +393,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       <Layout.Content
         style={{
           marginTop: 56,
-          marginBottom: isMobile ? 56 + (hasPlayer ? 64 : 0) : hasPlayer ? 64 : 0,
+          marginBottom: isMobile ? 56 + (hasFullWidthPlayer ? 64 : 0) : hasFullWidthPlayer ? 64 : 0,
           minHeight: `calc(100vh - 56px)`,
         }}
       >

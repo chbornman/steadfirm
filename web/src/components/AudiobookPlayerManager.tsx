@@ -102,18 +102,14 @@ export function AudiobookPlayerManager() {
             store.setPosition(action.time);
           }
           break;
-        case 'cycleSpeed': {
-          const speeds = [0.75, 1, 1.25, 1.5, 2];
-          const idx = speeds.indexOf(store.speed);
-          const nextIdx = (idx + 1) % speeds.length;
-          const nextSpeed = speeds[nextIdx];
-          if (nextSpeed !== undefined) {
-            store.setSpeed(nextSpeed);
-          }
+        case 'setSpeed':
+          store.setSpeed(action.speed);
           break;
-        }
         case 'toggleChapters':
           setChaptersOpen(!chaptersOpen);
+          break;
+        case 'close':
+          store.stop();
           break;
       }
     },
