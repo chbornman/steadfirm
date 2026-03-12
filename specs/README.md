@@ -19,6 +19,7 @@ Living documentation for every major subsystem. Each spec is the authoritative r
 | User Provisioning | [PROVISIONING.md](PROVISIONING.md) | Complete | Multi-service account creation, per-service flows, admin bootstrap, credential storage, retry strategy |
 | Search | [SEARCH.md](SEARCH.md) | Complete | Federated fan-out, per-service query translation, SSE streaming, LLM-enhanced search, search modal UI |
 | Metadata Enrichment | [METADATA.md](METADATA.md) | Complete | Hybrid metadata strategy, pre-upload extraction, native service refresh/match proxying, enrichment jobs, per-service capabilities, job queue, API surface |
+| Backend Refactor | [REFACTOR.md](REFACTOR.md) | Complete | Functions × services architecture, module layout (functions/, services/, provision/), growth vectors, LLM integration pattern, migration plan from monolithic routes |
 
 ---
 

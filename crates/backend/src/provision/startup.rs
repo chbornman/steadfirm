@@ -168,7 +168,6 @@ async fn init_immich(
 ) -> anyhow::Result<(String, String)> {
     let client = ImmichClient::new(base_url, http.clone());
 
-    // Check if already initialized.
     let config: serde_json::Value = http
         .get(format!("{base_url}/api/server/config"))
         .send()
@@ -179,7 +178,6 @@ async fn init_immich(
     let is_initialized = config["isInitialized"].as_bool().unwrap_or(false);
 
     if !is_initialized {
-        // Create admin account.
         let resp = http
             .post(format!("{base_url}/api/auth/admin-sign-up"))
             .json(&json!({
@@ -194,13 +192,11 @@ async fn init_immich(
         }
     }
 
-    // Login to get access token.
     let login: serde_json::Value = client.login(admin_email, password).await?;
     let access_token = login["accessToken"]
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("no access token from immich login"))?;
 
-    // Create an API key.
     let api_key_resp = client.create_api_key(access_token).await?;
     let api_key = api_key_resp["secret"]
         .as_str()
@@ -223,7 +219,6 @@ async fn init_jellyfin(
 ) -> anyhow::Result<(String, String)> {
     let client = JellyfinClient::new(base_url, device_id, http.clone());
 
-    // Check if wizard is done.
     let info: serde_json::Value = http
         .get(format!("{base_url}/System/Info/Public"))
         .send()
@@ -234,7 +229,6 @@ async fn init_jellyfin(
     let wizard_done = info["StartupWizardCompleted"].as_bool().unwrap_or(false);
 
     if !wizard_done {
-        // Run startup wizard.
         http.post(format!("{base_url}/Startup/Configuration"))
             .json(&json!({
                 "UICulture": "en-US",
@@ -244,7 +238,6 @@ async fn init_jellyfin(
             .send()
             .await?;
 
-        // GET must be called before POST — Jellyfin initializes internal state.
         http.get(format!("{base_url}/Startup/User")).send().await?;
 
         http.post(format!("{base_url}/Startup/User"))
@@ -267,14 +260,12 @@ async fn init_jellyfin(
             .send()
             .await?;
 
-        // Give Jellyfin a moment to finalize.
         tokio::time::sleep(std::time::Duration::from_secs(
             crate::constants::JELLYFIN_WIZARD_SETTLE_SECS,
         ))
         .await;
     }
 
-    // Authenticate to get token.
     let auth_resp = client
         .authenticate_by_name(admin_username, password)
         .await?;
@@ -300,7 +291,6 @@ async fn init_paperless(
 ) -> anyhow::Result<(String, String)> {
     let client = PaperlessClient::new(base_url, http.clone());
 
-    // Try to get a token — if admin exists, this will work.
     let token_result = client.get_token(admin_username, password).await;
 
     match token_result {
@@ -312,15 +302,6 @@ async fn init_paperless(
             Ok((admin_username.to_string(), token))
         }
         Err(_) => {
-            // Admin doesn't exist yet — create via the API.
-            // Paperless creates a default admin if PAPERLESS_ADMIN_USER/PASSWORD env vars are set,
-            // but we can't rely on that. Try creating via API with a bootstrapped superuser.
-            //
-            // Unfortunately, Paperless requires an existing admin to create users via API.
-            // The only way to create the first admin is via Django's createsuperuser management command
-            // or via PAPERLESS_ADMIN_USER env var during first boot.
-            //
-            // For now, log the error and let it be handled by Docker env vars.
             anyhow::bail!(
                 "paperless admin not available — set PAPERLESS_ADMIN_USER=admin and \
                  PAPERLESS_ADMIN_PASSWORD in docker-compose environment"
@@ -339,7 +320,6 @@ async fn init_audiobookshelf(
 ) -> anyhow::Result<(String, String)> {
     let client = AudiobookshelfClient::new(base_url, http.clone());
 
-    // Check init status.
     let status: serde_json::Value = http
         .get(format!("{base_url}/status"))
         .send()
@@ -350,7 +330,6 @@ async fn init_audiobookshelf(
     let is_init = status["isInit"].as_bool().unwrap_or(false);
 
     if !is_init {
-        // Initialize with root user.
         let resp = http
             .post(format!("{base_url}/init"))
             .json(&json!({
@@ -366,7 +345,6 @@ async fn init_audiobookshelf(
         }
     }
 
-    // Login to get token.
     let login_resp = client.login(admin_username, password).await?;
     let token = login_resp["user"]["token"]
         .as_str()
@@ -377,7 +355,6 @@ async fn init_audiobookshelf(
         .unwrap_or("root")
         .to_string();
 
-    // Create audiobook library if none exists.
     let libraries = client.get_libraries(&token).await?;
     let lib_count = libraries["libraries"]
         .as_array()
@@ -413,7 +390,6 @@ async fn init_kavita(
     let client = KavitaClient::new(base_url, http.clone());
     let email = format!("{admin_username}@steadfirm.local");
 
-    // Try to login first — admin may already exist from a previous boot.
     let login_result = client.login(admin_username, password).await;
 
     let api_key = match login_result {
@@ -422,13 +398,9 @@ async fn init_kavita(
                 .as_str()
                 .ok_or_else(|| anyhow::anyhow!("no token from kavita login"))?;
 
-            // For an existing admin, we need to create an API key via Plugin/authenticate.
             client.create_api_key(token).await?
         }
         Err(_) => {
-            // First boot — register the admin user.
-            // The registration response includes an `apiKey` field directly,
-            // so we don't need a separate Plugin/authenticate call.
             let resp = http
                 .post(format!("{base_url}/api/Account/register"))
                 .json(&json!({
@@ -453,7 +425,6 @@ async fn init_kavita(
         }
     };
 
-    // Create a library for ebooks/comics if none exists.
     let libraries = client.get_libraries(&api_key).await?;
     let lib_count = libraries.as_array().map(|a| a.len()).unwrap_or(0);
     if lib_count == 0 {

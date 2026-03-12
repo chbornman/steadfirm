@@ -10,6 +10,24 @@ Steadfirm is a unified personal cloud platform. One app, one login for photos, m
 steadfirm/
   crates/
     backend/       — Rust/Axum API server (gateway, auth, drop zone, proxying)
+      src/
+        auth/          — Session validation middleware
+        functions/     — High-level features (functions × services pattern)
+          browse/      — Per-service browse/list endpoints (photos, media, documents, audiobooks, reading, files)
+          classify/    — File classification pipeline (heuristics, LLM, groups, SSE streaming)
+          metadata/    — Metadata refresh/match stubs per service
+          search/      — Federated search with SSE fan-out + LLM enhancement
+          upload/      — Per-service upload handlers with shared multipart parsing
+        provision/     — User provisioning + service initialization (startup.rs, provisioning.rs)
+        routes/        — Thin router assembly (admin.rs, hooks.rs, users.rs) + nests to functions/
+        services/      — Dumb HTTP clients per backing service (immich, jellyfin, audiobookshelf, kavita, paperless, ai, ffprobe)
+        config.rs      — Env-based configuration
+        constants.rs   — Named tuning parameters
+        error.rs       — AppError type
+        models.rs      — Shared backend models
+        proxy.rs       — Generic HTTP proxy utilities
+        middleware.rs  — Tower middleware
+        pagination.rs  — Pagination helpers
     app/           — Rust/Tauri 2 client (desktop + mobile, offline-first)
       src/         — App-specific React frontend (offline, data via Tauri commands + SQLite)
       src-tauri/   — Tauri Rust code (SQLite cache, sync, native features)
@@ -98,6 +116,25 @@ cd infra && docker compose down
 
 - **Theme values** (colors, shadows, spacing, gradients) go in `@steadfirm/theme` tokens — never as inline hex codes or magic pixel values. See `packages/theme/src/tokens.ts`.
 - **API configuration** (base URLs, retry limits, timeouts) go in the shared API client config, not scattered across components.
+
+## Backend Architecture — Functions × Services
+
+The backend follows a **functions × services** pattern. See `specs/REFACTOR.md` for the full spec.
+
+- **`services/`** = dumb HTTP clients. One file per backing service (immich.rs, jellyfin.rs, etc.). No business logic — just request building, response parsing, error mapping.
+- **`functions/`** = smart high-level features. Each subdirectory is a user-facing capability (browse, classify, upload, search, metadata). Each has a `mod.rs` (orchestrator/router) and per-service files (photos.rs, media.rs, etc.).
+- **`routes/`** = thin router assembly. Only admin.rs, hooks.rs, users.rs remain here. Everything else is nested from functions/.
+- **`provision/`** = user provisioning + service initialization at startup.
+
+### Growth Vectors (no surgery on existing code)
+
+1. **New feature** → add a new `functions/` subdirectory with mod.rs + per-service files
+2. **New service** → add a new `services/` client + one file per existing feature
+3. **Deeper integration** → extend per-service files within existing features
+
+### LLM Integration
+
+LLM usage is **per-feature, not centralized**. Each function module decides when/how to call the AI service (e.g., classify uses LLM for ambiguous files, search uses LLM for query enhancement).
 
 ## Key Design Principles
 

@@ -1,3 +1,5 @@
+//! Audiobooks browse — Audiobookshelf proxy.
+
 use axum::{
     body::Body,
     extract::{Path, Query, State},

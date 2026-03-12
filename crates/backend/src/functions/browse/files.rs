@@ -1,3 +1,5 @@
+//! Files browse — Steadfirm's own file storage.
+
 use axum::{
     body::Body,
     extract::{Path, Query, State},

@@ -11,14 +11,14 @@ mod auth;
 mod config;
 pub mod constants;
 mod error;
+pub mod functions;
 mod middleware;
 mod models;
 mod pagination;
-pub mod provisioning;
+pub mod provision;
 mod proxy;
 mod routes;
 mod services;
-mod startup;
 
 /// Shared application state available to all route handlers.
 #[derive(Clone)]
@@ -27,7 +27,7 @@ pub struct AppState {
     pub config: config::Config,
     pub http: reqwest::Client,
     pub ai: Arc<tokio::sync::RwLock<services::AiClassifier>>,
-    pub provisioner: provisioning::ProvisioningService,
+    pub provisioner: provision::ProvisioningService,
 }
 
 #[tokio::main]
@@ -65,10 +65,10 @@ async fn main() -> anyhow::Result<()> {
         .build()?;
 
     // Load any existing admin credentials from DB
-    config = startup::load_admin_credentials(&pool, config).await?;
+    config = provision::load_admin_credentials(&pool, config).await?;
 
     // Initialize services that haven't been set up yet
-    startup::initialize_services(&pool, &mut config, &http).await?;
+    provision::initialize_services(&pool, &mut config, &http).await?;
     tracing::info!("service initialization complete");
 
     // Ensure files storage directory exists
@@ -86,7 +86,7 @@ async fn main() -> anyhow::Result<()> {
         config: config.clone(),
         http,
         ai: Arc::new(tokio::sync::RwLock::new(ai)),
-        provisioner: provisioning::ProvisioningService::new(),
+        provisioner: provision::ProvisioningService::new(),
     };
 
     let app = Router::new()

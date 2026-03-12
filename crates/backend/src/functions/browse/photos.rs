@@ -1,3 +1,5 @@
+//! Photos browse — Immich proxy.
+
 use axum::{
     body::Body,
     extract::{Path, Query, State},

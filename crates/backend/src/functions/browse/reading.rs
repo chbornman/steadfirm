@@ -1,3 +1,5 @@
+//! Reading browse — Kavita proxy.
+
 use axum::{
     body::Body,
     extract::{Path, Query, State},

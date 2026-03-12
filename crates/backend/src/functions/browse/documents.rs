@@ -1,3 +1,5 @@
+//! Documents browse — Paperless-ngx proxy.
+
 use std::collections::HashMap;
 use std::sync::Arc;
 

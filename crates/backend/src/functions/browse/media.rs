@@ -1,3 +1,5 @@
+//! Media browse — Jellyfin proxy (movies, TV shows, music).
+
 use axum::{
     body::Body,
     extract::{Path, Query, State},
