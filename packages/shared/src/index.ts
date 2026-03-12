@@ -67,6 +67,14 @@ export {
 } from './constants';
 export type { ServiceName } from './constants';
 
+export type {
+  SearchRequest,
+  SearchResultItem,
+  ServiceSearchResult,
+  ServiceSearchError,
+  SearchComplete,
+} from './types/search';
+
 export {
   classifyFile,
   formatFileSize,

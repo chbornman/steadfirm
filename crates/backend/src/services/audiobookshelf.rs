@@ -44,6 +44,27 @@ impl AudiobookshelfClient {
         Ok(resp.json().await?)
     }
 
+    /// Search a library for items matching a query string.
+    pub async fn search(
+        &self,
+        token: &str,
+        library_id: &str,
+        query: &str,
+        limit: u32,
+    ) -> Result<Value, AppError> {
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &format!("/api/libraries/{library_id}/search"),
+                token,
+            )
+            .query(&[("q", query), ("limit", &limit.to_string())])
+            .send()
+            .await?;
+        let resp = check_response("audiobookshelf", resp).await?;
+        Ok(resp.json().await?)
+    }
+
     /// Get a single item with details.
     pub async fn get_item(&self, token: &str, item_id: &str) -> Result<Value, AppError> {
         let resp = self

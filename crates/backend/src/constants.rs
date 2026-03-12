@@ -155,3 +155,26 @@ pub const READING_VOLUME_PREFIXES: &[&str] = &[
 
 /// Special markers in reading filenames.
 pub const READING_SPECIAL_MARKERS: &[&str] = &["sp", "special", "specials", "oneshot", "one-shot"];
+
+// ─── Search ──────────────────────────────────────────────────────────
+
+/// Maximum number of results to return per service in a global search.
+pub const SEARCH_PER_SERVICE_LIMIT: u32 = 10;
+
+/// Timeout for individual service search calls (seconds). If a service
+/// doesn't respond within this window, results from other services are
+/// still returned.
+pub const SEARCH_SERVICE_TIMEOUT_SECS: u64 = 5;
+
+/// Maximum query length accepted by the search endpoint. Queries longer
+/// than this are rejected with 400 Bad Request.
+pub const SEARCH_MAX_QUERY_LENGTH: usize = 500;
+
+/// Max tokens for the search query compiler LLM response. Much smaller
+/// than classification — the output is just a JSON object with a few
+/// per-service queries, not per-file reasoning.
+pub const SEARCH_LLM_MAX_TOKENS: u64 = 2048;
+
+/// Minimum query length to consider for LLM-enhanced search. Shorter
+/// queries are treated as literal and skip the LLM entirely.
+pub const SEARCH_LLM_MIN_QUERY_WORDS: usize = 3;

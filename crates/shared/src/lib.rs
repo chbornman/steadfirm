@@ -1,9 +1,10 @@
 pub mod classify;
 pub mod models;
+pub mod search;
 pub mod services;
 
 /// Service types that Steadfirm orchestrates
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ServiceKind {
     /// Photo & video management (Immich)

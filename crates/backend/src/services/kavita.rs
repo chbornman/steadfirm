@@ -43,6 +43,23 @@ impl KavitaClient {
             .header("x-api-key", api_key)
     }
 
+    // ─── Search ───────────────────────────────────────────────────────
+
+    /// Search across all libraries for series matching a query string.
+    pub async fn search(&self, api_key: &str, query: &str) -> Result<Value, AppError> {
+        let resp = self
+            .request_api_key(
+                reqwest::Method::GET,
+                "/api/Search/search",
+                api_key,
+            )
+            .query(&[("queryString", query)])
+            .send()
+            .await?;
+        let resp = check_response("kavita", resp).await?;
+        Ok(resp.json().await?)
+    }
+
     // ─── User-facing endpoints ───────────────────────────────────────
 
     /// List all libraries the user has access to.

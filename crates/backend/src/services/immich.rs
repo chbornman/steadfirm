@@ -30,6 +30,19 @@ impl ImmichClient {
         Ok(resp.json().await?)
     }
 
+    /// Smart search using CLIP embeddings (natural language → visual similarity).
+    pub async fn smart_search(&self, api_key: &str, body: &Value) -> Result<Value, AppError> {
+        let resp = self
+            .http
+            .post(format!("{}/api/search/smart", self.base_url))
+            .header("x-api-key", api_key)
+            .json(body)
+            .send()
+            .await?;
+        let resp = check_response("immich", resp).await?;
+        Ok(resp.json().await?)
+    }
+
     /// Get a single asset's metadata.
     pub async fn get_asset(&self, api_key: &str, asset_id: &str) -> Result<Value, AppError> {
         let resp = self

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { Layout, Dropdown, Avatar, Grid } from 'antd';
 import { LayoutGroup, motion, AnimatePresence } from 'framer-motion';
@@ -12,6 +12,7 @@ import {
   BookOpenText,
   Folder,
   CloudArrowUp,
+  MagnifyingGlass,
   Sun,
   Moon,
   Desktop,
@@ -30,6 +31,7 @@ import { useDebugStore, DEBUG_PANEL_WIDTH } from '@/stores/debug';
 import type { TabKey } from '@/stores/preferences';
 import { MusicPlayerManager } from '@/components/MusicPlayerManager';
 import { AudiobookPlayerManager } from '@/components/AudiobookPlayerManager';
+import { SearchModal } from '@/components/SearchModal';
 
 const { useBreakpoint } = Grid;
 
@@ -163,7 +165,20 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   const ThemeIcon = mode === 'dark' ? Moon : mode === 'light' ? Sun : Desktop;
   const [menuOpen, setMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const keepOpenRef = useRef(false);
+
+  // Global Cmd+K / Ctrl+K shortcut to open search.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setSearchOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   const handleMenuOpenChange = useCallback((open: boolean) => {
     if (!open && keepOpenRef.current) {
@@ -286,6 +301,26 @@ export function AppLayout({ children }: AppLayoutProps) {
           {/* Right side */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             <button
+              onClick={() => setSearchOpen(true)}
+              title="Search (Cmd+K)"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 34,
+                height: 34,
+                border: '1px solid var(--ant-color-border)',
+                borderRadius: 9999,
+                background: 'transparent',
+                cursor: 'pointer',
+                color: 'var(--ant-color-text-secondary)',
+                transition: 'border-color 0.15s ease',
+              }}
+            >
+              <MagnifyingGlass size={18} />
+            </button>
+
+            <button
               onClick={() => handleNav('/upload')}
               style={{
                 display: 'flex',
@@ -342,18 +377,37 @@ export function AppLayout({ children }: AppLayoutProps) {
           }}
         >
           <Wordmark size={22} onClick={() => handleNav('/photos')} />
-          <Dropdown
-            open={menuOpen}
-            onOpenChange={handleMenuOpenChange}
-            menu={{ items: userMenuItems, style: { minWidth: 180 } }}
-            trigger={['click']}
-          >
-            <Avatar
-              size={32}
-              icon={<User size={18} />}
-              style={{ cursor: 'pointer', background: cssVar.avatarBg }}
-            />
-          </Dropdown>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              onClick={() => setSearchOpen(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                border: 'none',
+                borderRadius: 9999,
+                background: 'transparent',
+                cursor: 'pointer',
+                color: 'var(--ant-color-text-secondary)',
+              }}
+            >
+              <MagnifyingGlass size={20} />
+            </button>
+            <Dropdown
+              open={menuOpen}
+              onOpenChange={handleMenuOpenChange}
+              menu={{ items: userMenuItems, style: { minWidth: 180 } }}
+              trigger={['click']}
+            >
+              <Avatar
+                size={32}
+                icon={<User size={18} />}
+                style={{ cursor: 'pointer', background: cssVar.avatarBg }}
+              />
+            </Dropdown>
+          </div>
         </Layout.Header>
       )}
 
@@ -412,6 +466,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           </nav>
         </LayoutGroup>
       )}
+      <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
     </Layout>
   );
 }
