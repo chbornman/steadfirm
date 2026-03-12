@@ -35,3 +35,4 @@ web/.next/
 
 # Seed media (large local files for dev seeding)
 infra/seed-media/
+infra/dropzone-test/

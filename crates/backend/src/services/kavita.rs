@@ -466,13 +466,21 @@ impl KavitaClient {
     /// Returns the email confirmation link from which the confirmation
     /// token can be extracted.  Roles should be empty — Kavita assigns
     /// `Pleb` + `Login` automatically during confirmation.
-    pub async fn invite_user(&self, admin_token: &str, email: &str) -> Result<String, AppError> {
+    ///
+    /// `library_ids` grants the user access to specific libraries. Pass
+    /// all library IDs to give full access.
+    pub async fn invite_user(
+        &self,
+        admin_token: &str,
+        email: &str,
+        library_ids: &[i64],
+    ) -> Result<String, AppError> {
         let resp = self
             .request(reqwest::Method::POST, "/api/Account/invite", admin_token)
             .json(&serde_json::json!({
                 "email": email,
                 "roles": [],
-                "libraries": [],
+                "libraries": library_ids,
                 "ageRestriction": { "ageRating": 0, "includeUnknowns": true },
             }))
             .send()
@@ -559,23 +567,30 @@ impl KavitaClient {
         Ok(())
     }
 
-    /// Create a persistent API key for a user (requires user's JWT token).
+    /// Create a persistent auth key for a user (requires user's JWT token).
+    ///
+    /// Uses `POST /api/Account/create-auth-key` which returns an `AuthKeyDto`
+    /// containing the key string.  The old Plugin/authenticate endpoint is
+    /// for *authenticating with* an existing key, not creating one.
     pub async fn create_api_key(&self, user_token: &str) -> Result<String, AppError> {
         let resp = self
             .request(
                 reqwest::Method::POST,
-                "/api/Plugin/authenticate",
+                "/api/Account/create-auth-key",
                 user_token,
             )
             .json(&serde_json::json!({
-                "pluginName": "Steadfirm",
+                "keyLength": crate::constants::KAVITA_AUTH_KEY_LENGTH,
+                "name": "Steadfirm",
             }))
             .send()
             .await?;
         let resp = check_response("kavita", resp).await?;
-        // Response is a plain string (the API key)
-        let api_key = resp.text().await?;
-        // Strip surrounding quotes if present
-        Ok(api_key.trim_matches('"').to_string())
+        let body: serde_json::Value = resp.json().await?;
+        body["key"].as_str().map(|s| s.to_string()).ok_or_else(|| {
+            AppError::Internal(anyhow::anyhow!(
+                "kavita create-auth-key: missing 'key' in response"
+            ))
+        })
     }
 }

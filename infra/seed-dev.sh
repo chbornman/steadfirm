@@ -204,30 +204,33 @@ count_files() {
 # ======================================================================
 
 # ── PHOTOS ────────────────────────────────────────────────────────────
-if [ -d "$SEED_DIR/photos" ] && [ "$(count_files "$SEED_DIR/photos")" -gt 0 ]; then
-    header "Uploading photos ($(count_files "$SEED_DIR/photos") files)"
-    for f in "$SEED_DIR/photos"/*; do
-        [ -f "$f" ] && upload "$f" "photos"
+PHOTO_COUNT=$(find "$SEED_DIR/photos" -type f \( -name "*.jpg" -o -name "*.JPG" -o -name "*.jpeg" -o -name "*.png" -o -name "*.HEIC" -o -name "*.heic" -o -name "*.gif" -o -name "*.webp" \) 2>/dev/null | wc -l)
+if [ "$PHOTO_COUNT" -gt 0 ]; then
+    header "Uploading photos ($PHOTO_COUNT files)"
+    find "$SEED_DIR/photos" -type f \( -name "*.jpg" -o -name "*.JPG" -o -name "*.jpeg" -o -name "*.png" -o -name "*.HEIC" -o -name "*.heic" -o -name "*.gif" -o -name "*.webp" \) | sort | while read -r f; do
+        upload "$f" "photos"
     done
 else
     warn "No photos found in $SEED_DIR/photos/"
 fi
 
 # ── DOCUMENTS ─────────────────────────────────────────────────────────
-if [ -d "$SEED_DIR/documents" ] && [ "$(count_files "$SEED_DIR/documents")" -gt 0 ]; then
-    header "Uploading documents ($(count_files "$SEED_DIR/documents") files)"
-    for f in "$SEED_DIR/documents"/*; do
-        [ -f "$f" ] && upload "$f" "documents"
+DOC_COUNT=$(find "$SEED_DIR/documents" -type f \( -name "*.pdf" -o -name "*.txt" -o -name "*.csv" -o -name "*.doc" -o -name "*.docx" \) 2>/dev/null | wc -l)
+if [ "$DOC_COUNT" -gt 0 ]; then
+    header "Uploading documents ($DOC_COUNT files)"
+    find "$SEED_DIR/documents" -type f \( -name "*.pdf" -o -name "*.txt" -o -name "*.csv" -o -name "*.doc" -o -name "*.docx" \) | sort | while read -r f; do
+        upload "$f" "documents"
     done
 else
     warn "No documents found in $SEED_DIR/documents/"
 fi
 
 # ── READING (ebooks + comics + manga) ─────────────────────────────────
-if [ -d "$SEED_DIR/reading" ] && [ "$(count_files "$SEED_DIR/reading")" -gt 0 ]; then
-    header "Uploading reading material ($(count_files "$SEED_DIR/reading") files)"
-    for f in "$SEED_DIR/reading"/*; do
-        [ -f "$f" ] && upload "$f" "reading"
+READING_COUNT=$(find "$SEED_DIR/reading" -type f \( -name "*.epub" -o -name "*.cbz" -o -name "*.cbr" -o -name "*.pdf" \) 2>/dev/null | wc -l)
+if [ "$READING_COUNT" -gt 0 ]; then
+    header "Uploading reading material ($READING_COUNT files)"
+    find "$SEED_DIR/reading" -type f \( -name "*.epub" -o -name "*.cbz" -o -name "*.cbr" -o -name "*.pdf" \) | sort | while read -r f; do
+        upload "$f" "reading"
     done
 else
     warn "No reading material found in $SEED_DIR/reading/"

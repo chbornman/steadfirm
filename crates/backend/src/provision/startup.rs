@@ -80,6 +80,9 @@ pub async fn initialize_services(
 
     // --- Jellyfin ---
     if config.jellyfin_admin_token.is_empty() {
+        // Pre-create media subdirectories — Jellyfin validates Directory.Exists().
+        ensure_media_directories(&config.media_storage_path).await;
+
         match init_jellyfin(
             http,
             &config.jellyfin_url,
@@ -138,6 +141,9 @@ pub async fn initialize_services(
 
     // --- Kavita ---
     if config.kavita_admin_api_key.is_empty() {
+        // Pre-create reading subdirectories — Kavita needs them to exist.
+        ensure_reading_directories(&config.reading_storage_path).await;
+
         match init_kavita(
             http,
             &config.kavita_url,
@@ -160,6 +166,11 @@ pub async fn initialize_services(
     // These functions check for existing libraries and create missing ones.
 
     if !config.jellyfin_admin_token.is_empty() {
+        // Pre-create media subdirectories on the host so they exist inside
+        // the Jellyfin container (shared bind mount).  Jellyfin validates
+        // Directory.Exists() and returns 400 if paths are missing.
+        ensure_media_directories(&config.media_storage_path).await;
+
         let jf_client = JellyfinClient::new(
             &config.jellyfin_url,
             &config.jellyfin_device_id,
@@ -169,6 +180,10 @@ pub async fn initialize_services(
     }
 
     if !config.kavita_admin_api_key.is_empty() {
+        // Pre-create reading subdirectories on the host so they exist inside
+        // the Kavita container (shared bind mount).
+        ensure_reading_directories(&config.reading_storage_path).await;
+
         let kv_client = KavitaClient::new(&config.kavita_url, http.clone());
         // Need JWT for library management — login as admin.
         match kv_client
@@ -309,8 +324,8 @@ async fn init_jellyfin(
         .unwrap_or("admin")
         .to_string();
 
-    // Ensure media libraries exist (idempotent — skips if already created).
-    ensure_jellyfin_libraries(&client, &token).await;
+    // Library creation is handled by the post-init ensure_jellyfin_libraries
+    // call in initialize_services — don't duplicate it here.
 
     Ok((user_id, token))
 }
@@ -469,7 +484,7 @@ async fn init_kavita(
 
     // We need both the JWT token (for admin library ops) and the API key
     // (for long-lived auth). JWT is required for library creation.
-    let (jwt_token, api_key) = match login_result {
+    let (_jwt_token, api_key) = match login_result {
         Ok(resp) => {
             let token = resp["token"]
                 .as_str()
@@ -510,8 +525,8 @@ async fn init_kavita(
         }
     };
 
-    // Ensure libraries exist using JWT (API keys lack library management permissions).
-    ensure_kavita_libraries(&client, &jwt_token).await;
+    // Library creation is handled by the post-init ensure_kavita_libraries
+    // call in initialize_services — don't duplicate it here.
 
     Ok((admin_username.to_string(), api_key))
 }
@@ -551,6 +566,31 @@ async fn ensure_kavita_libraries(client: &KavitaClient, jwt_token: &str) {
             Err(e) => {
                 tracing::error!(library = name, error = %e, "failed to create kavita library")
             }
+        }
+    }
+}
+
+// ─── Filesystem helpers ──────────────────────────────────────────────
+
+/// Create media subdirectories on the host so they exist inside the
+/// Jellyfin container (bind mount).  Jellyfin validates `Directory.Exists()`
+/// for every path and returns 400 if missing.
+async fn ensure_media_directories(media_storage_path: &str) {
+    for subdir in &["Movies", "Shows", "Music"] {
+        let path = format!("{media_storage_path}/{subdir}");
+        if let Err(e) = tokio::fs::create_dir_all(&path).await {
+            tracing::warn!(path = %path, error = %e, "failed to create media directory");
+        }
+    }
+}
+
+/// Create reading subdirectories on the host so they exist inside the
+/// Kavita container (bind mount).
+async fn ensure_reading_directories(reading_storage_path: &str) {
+    for subdir in &["Books", "Comics"] {
+        let path = format!("{reading_storage_path}/{subdir}");
+        if let Err(e) = tokio::fs::create_dir_all(&path).await {
+            tracing::warn!(path = %path, error = %e, "failed to create reading directory");
         }
     }
 }

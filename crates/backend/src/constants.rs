@@ -49,6 +49,10 @@ pub const JELLYFIN_WIZARD_SETTLE_SECS: u64 = 2;
 /// Total number of services that should be initialized.
 pub const EXPECTED_SERVICE_COUNT: usize = 5;
 
+/// Length of Kavita auth keys created via `POST /api/Account/create-auth-key`.
+/// Valid range: 8–32.
+pub const KAVITA_AUTH_KEY_LENGTH: u32 = 32;
+
 // ─── AI classification ───────────────────────────────────────────────
 
 /// Confidence threshold below which files are sent to the LLM for

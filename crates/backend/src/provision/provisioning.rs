@@ -536,8 +536,19 @@ async fn provision_kavita(state: &AppState, name: &str) -> Result<(String, Strin
         let _ = client.delete_user(admin_token, &username).await;
     }
 
+    // Fetch all library IDs so the new user gets access to everything.
+    let libraries = client.get_libraries_jwt(admin_token).await?;
+    let library_ids: Vec<i64> = libraries
+        .as_array()
+        .unwrap_or(&Vec::new())
+        .iter()
+        .filter_map(|lib| lib["id"].as_i64())
+        .collect();
+
     // Invite the new user — returns an email confirmation link.
-    let email_link = client.invite_user(admin_token, &email).await?;
+    let email_link = client
+        .invite_user(admin_token, &email, &library_ids)
+        .await?;
 
     // Confirm the invitation to set the user's password.
     // The confirm-email response is a full login payload that includes

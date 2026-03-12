@@ -98,9 +98,12 @@ async fn list_series(
     ))?;
 
     if libs.is_empty() {
-        return Err(AppError::ServiceUnavailable(
-            "no reading libraries found".into(),
-        ));
+        return Ok(Json(PaginatedResponse::new(
+            vec![],
+            0,
+            params.pagination.page,
+            params.pagination.page_size,
+        )));
     }
 
     // Filter to the requested library if specified, otherwise use the first one.

@@ -15,28 +15,151 @@ use crate::error::AppError;
 use crate::services::JellyfinClient;
 use crate::AppState;
 
-/// Simple single-file media upload — writes to Movies/ and refreshes Jellyfin.
+/// Determine the Jellyfin library subdirectory for a file based on MIME type
+/// and filename.  Audio → Music/, video with episode pattern → Shows/,
+/// everything else → Movies/.
+fn media_subdir(mime_type: &str, filename: &str) -> &'static str {
+    if mime_type.starts_with("audio/") {
+        return "Music";
+    }
+    if looks_like_episode(filename) {
+        return "Shows";
+    }
+    "Movies"
+}
+
+/// Returns true if the filename contains a TV episode pattern like
+/// S01E02, s1e3, 1x02, etc.
+fn looks_like_episode(filename: &str) -> bool {
+    let lower = filename.to_ascii_lowercase();
+    // Match S01E02 / s1e3 style
+    let mut chars = lower.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == 's' {
+            // Consume digits after 's'
+            let mut has_s_digits = false;
+            while chars.peek().is_some_and(|ch| ch.is_ascii_digit()) {
+                chars.next();
+                has_s_digits = true;
+            }
+            if has_s_digits && chars.peek() == Some(&'e') {
+                chars.next();
+                if chars.peek().is_some_and(|ch| ch.is_ascii_digit()) {
+                    return true;
+                }
+            }
+        }
+    }
+    // Match 1x02 / 12x03 style
+    let bytes = lower.as_bytes();
+    for i in 0..bytes.len() {
+        if bytes[i] == b'x'
+            && i > 0
+            && bytes[i - 1].is_ascii_digit()
+            && i + 1 < bytes.len()
+            && bytes[i + 1].is_ascii_digit()
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Parse show name and season number from a TV episode filename.
+/// "Arcane S02E08.mkv" → ("Arcane", 2)
+/// "I Think You Should Leave S02E04.mkv" → ("I Think You Should Leave", 2)
+/// "show.1x03.mkv" → ("show", 1)
+fn parse_episode_info(filename: &str) -> (String, u32) {
+    let stem = filename.rsplit('.').skip(1).collect::<Vec<_>>();
+    let stem = stem.into_iter().rev().collect::<Vec<_>>().join(".");
+    let lower = stem.to_ascii_lowercase();
+
+    // Try S##E## pattern
+    if let Some(pos) = lower.find('s').and_then(|s_pos| {
+        let after_s = &lower[s_pos + 1..];
+        let digits_end = after_s
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(after_s.len());
+        if digits_end > 0 && after_s[digits_end..].starts_with('e') {
+            Some(s_pos)
+        } else {
+            None
+        }
+    }) {
+        let show_name = stem[..pos].trim().trim_end_matches(['-', '.', '_']);
+        let show_name = show_name.replace(['.', '_'], " ");
+        let after_s = &lower[pos + 1..];
+        let digits_end = after_s
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(after_s.len());
+        let season: u32 = after_s[..digits_end].parse().unwrap_or(1);
+        let name = if show_name.is_empty() {
+            "Unknown Show".to_string()
+        } else {
+            show_name
+        };
+        return (name, season);
+    }
+
+    // Try ##x## pattern
+    for (i, c) in lower.char_indices() {
+        if c == 'x' && i > 0 && lower.as_bytes()[i - 1].is_ascii_digit() {
+            // Walk backwards to find start of season number
+            let mut start = i - 1;
+            while start > 0 && lower.as_bytes()[start - 1].is_ascii_digit() {
+                start -= 1;
+            }
+            let season: u32 = lower[start..i].parse().unwrap_or(1);
+            let show_name = stem[..start].trim().trim_end_matches(['-', '.', '_']);
+            let show_name = show_name.replace(['.', '_'], " ");
+            let name = if show_name.is_empty() {
+                "Unknown Show".to_string()
+            } else {
+                show_name
+            };
+            return (name, season);
+        }
+    }
+
+    ("Unknown Show".to_string(), 1)
+}
+
+/// Simple single-file media upload — routes to the correct Jellyfin library
+/// (Music/ for audio, Movies/ for video) and triggers a library refresh.
 pub async fn upload_to_media(
     state: &AppState,
     user: &AuthUser,
     filename: &str,
     file_data: &[u8],
-    _mime_type: &str,
+    mime_type: &str,
 ) -> Result<(), AppError> {
-    // Save to Jellyfin library folder.
     let _cred = user
         .credentials
         .jellyfin
         .as_ref()
         .ok_or(AppError::ServiceUnavailable("media not provisioned".into()))?;
 
-    // TODO: TMDb lookup for proper folder naming.
-    let media_dir = format!("{}/Movies/{}", state.config.media_storage_path, user.id);
-    tokio::fs::create_dir_all(&media_dir)
-        .await
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("mkdir error: {e}")))?;
+    let subdir = media_subdir(mime_type, filename);
 
-    let file_path = format!("{}/{}", media_dir, filename);
+    let file_path = if subdir == "Shows" {
+        // Parse show name and season from filename for proper Jellyfin structure.
+        // "Arcane S02E08.mkv" → Shows/{userId}/Arcane/Season 02/Arcane S02E08.mkv
+        let (show_name, season) = parse_episode_info(filename);
+        let show_dir = format!(
+            "{}/Shows/{}/{}/Season {:02}",
+            state.config.media_storage_path, user.id, show_name, season
+        );
+        tokio::fs::create_dir_all(&show_dir)
+            .await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("mkdir error: {e}")))?;
+        format!("{}/{}", show_dir, filename)
+    } else {
+        let media_dir = format!("{}/{}/{}", state.config.media_storage_path, subdir, user.id);
+        tokio::fs::create_dir_all(&media_dir)
+            .await
+            .map_err(|e| AppError::Internal(anyhow::anyhow!("mkdir error: {e}")))?;
+        format!("{}/{}", media_dir, filename)
+    };
     tokio::fs::write(&file_path, file_data)
         .await
         .map_err(|e| AppError::Internal(anyhow::anyhow!("write error: {e}")))?;
