@@ -1,7 +1,11 @@
-import type { ReactNode, RefObject } from 'react';
+import type { CSSProperties, ReactNode, RefObject } from 'react';
 import { Spin, Grid } from 'antd';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CONTENT_PADDING_DESKTOP, CONTENT_PADDING_MOBILE } from './constants';
+import {
+  CONTENT_PADDING_DESKTOP,
+  CONTENT_PADDING_MOBILE,
+  CONTENT_MAX_WIDTH,
+} from './constants';
 
 const { useBreakpoint } = Grid;
 
@@ -47,15 +51,21 @@ export function ContentPage({
   const isMobile = !screens.md;
   const horizontalPadding = isMobile ? CONTENT_PADDING_MOBILE : CONTENT_PADDING_DESKTOP;
 
+  const containerStyle: CSSProperties = isMobile ? {} : {
+    maxWidth: CONTENT_MAX_WIDTH,
+    marginLeft: 'auto',
+    marginRight: 'auto',
+  };
+
   return (
     <>
       {/* Floating rails — position: fixed, outside document flow */}
       {!isMobile && navRail}
       {!isMobile && filterRail}
 
-      {/* Hero section — full bleed (Continue Listening, Continue Reading, etc.) */}
+      {/* Hero section */}
       {hero && (
-        <div style={{ padding: `0 ${horizontalPadding}px` }}>
+        <div style={{ ...containerStyle, padding: `0 ${horizontalPadding}px` }}>
           {hero}
         </div>
       )}
@@ -63,6 +73,7 @@ export function ContentPage({
       {/* Main content area */}
       <div
         style={{
+          ...containerStyle,
           padding: `0 ${horizontalPadding}px`,
           minHeight,
         }}

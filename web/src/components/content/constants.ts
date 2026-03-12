@@ -10,8 +10,14 @@ export const RAIL_TOP = 72;
 /** Shared spring config for rail animations */
 export const RAIL_SPRING = { type: 'spring' as const, stiffness: 400, damping: 30 };
 
-/** Content area horizontal padding on desktop */
-export const CONTENT_PADDING_DESKTOP = 48;
+/** Space reserved for a floating rail (rail offset + collapsed width + inner padding + gap) */
+export const RAIL_GUTTER = 150;
+
+/** Content area horizontal padding on desktop (enough to clear a floating rail) */
+export const CONTENT_PADDING_DESKTOP = RAIL_GUTTER;
 
 /** Content area horizontal padding on mobile */
 export const CONTENT_PADDING_MOBILE = 16;
+
+/** Maximum width of the main content area */
+export const CONTENT_MAX_WIDTH = 2800;
