@@ -1,51 +1,21 @@
-import { useEffect, useMemo, useCallback } from 'react';
-import { useInfiniteQuery } from '@tanstack/react-query';
-import { Typography, Spin } from 'antd';
+import { useCallback } from 'react';
+import { Spin } from 'antd';
 import { MusicNote } from '@phosphor-icons/react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { gridContainer, gridItem as gridItemVariant } from '@steadfirm/theme';
-import type { Artist, PaginatedResponse } from '@steadfirm/shared';
-import { DEFAULT_PAGE_SIZE } from '@steadfirm/shared';
-import { api } from '@/api/client';
-import { useIntersection } from '@/hooks/useIntersection';
+import type { Artist } from '@steadfirm/shared';
 import { useNavigate } from '@tanstack/react-router';
-
+import { ContentPage, useContentList } from '@/components/content';
+import { EmptyState } from '@/components/EmptyState';
 
 export function MediaMusicPage() {
   const navigate = useNavigate();
 
-  const { ref: sentinelRef, isIntersecting } = useIntersection({
-    rootMargin: '200% 0px',
-  });
-
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isLoading,
-  } = useInfiniteQuery({
-    queryKey: ['media', 'music', 'artists', 'list'],
-    queryFn: ({ pageParam }) =>
-      api
-        .get('api/v1/media/music/artists', {
-          searchParams: { page: pageParam, pageSize: DEFAULT_PAGE_SIZE },
-        })
-        .json<PaginatedResponse<Artist>>(),
-    getNextPageParam: (lastPage) => lastPage.nextPage ?? undefined,
-    initialPageParam: 1,
-  });
-
-  const allArtists = useMemo(
-    () => data?.pages.flatMap((p) => p.items) ?? [],
-    [data],
-  );
-
-  useEffect(() => {
-    if (isIntersecting && hasNextPage && !isFetchingNextPage) {
-      void fetchNextPage();
-    }
-  }, [isIntersecting, hasNextPage, isFetchingNextPage, fetchNextPage]);
+  const { items: allArtists, sentinelRef, isLoading, isFetchingNextPage } =
+    useContentList<Artist>({
+      queryKey: ['media', 'music', 'artists', 'list'],
+      endpoint: 'api/v1/media/music/artists',
+    });
 
   const handleSelect = useCallback(
     (artist: Artist) => {
@@ -56,27 +26,19 @@ export function MediaMusicPage() {
 
   return (
     <>
-      <div style={{ padding: '12px 16px', minHeight: 'calc(100vh - 120px)' }}>
+      <ContentPage
+        sentinelRef={sentinelRef}
+        isFetchingNextPage={isFetchingNextPage}
+      >
         {isLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 64 }}>
             <Spin size="large" />
           </div>
         ) : allArtists.length === 0 ? (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minHeight: 'calc(100vh - 250px)',
-              color: 'var(--ant-color-text-secondary)',
-            }}
-          >
-            <MusicNote size={64} weight="duotone" />
-            <Typography.Title level={4} type="secondary" style={{ marginTop: 16 }}>
-              No music yet
-            </Typography.Title>
-          </div>
+          <EmptyState
+            icon={<MusicNote size={64} weight="duotone" />}
+            title="No music yet"
+          />
         ) : (
           <motion.div
             variants={gridContainer}
@@ -86,6 +48,7 @@ export function MediaMusicPage() {
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
               gap: '24px 16px',
+              paddingTop: 12,
             }}
           >
             {allArtists.map((artist) => (
@@ -147,22 +110,7 @@ export function MediaMusicPage() {
             ))}
           </motion.div>
         )}
-
-        <div ref={sentinelRef} style={{ height: 1 }} />
-
-        <AnimatePresence>
-          {isFetchingNextPage && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              style={{ display: 'flex', justifyContent: 'center', padding: 24 }}
-            >
-              <Spin />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+      </ContentPage>
 
       <style>{`
         .artist-image {

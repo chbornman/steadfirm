@@ -1,22 +1,32 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useInfiniteQuery } from '@tanstack/react-query';
-import { Select, Typography, Spin, Button, Grid } from 'antd';
-import { Play } from '@phosphor-icons/react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { useState, useMemo, useCallback } from 'react';
+import { Spin, Typography, Button, Grid } from 'antd';
+import { Play, FilmSlate, Television } from '@phosphor-icons/react';
 import { PosterGrid, VideoPlayer, MediaViewer } from '@steadfirm/ui';
 import type { PosterGridItem } from '@steadfirm/ui';
 import { overlay, cssVar } from '@steadfirm/theme';
-import type { Movie, MovieListResponse } from '@steadfirm/shared';
-import { DEFAULT_PAGE_SIZE } from '@steadfirm/shared';
-import { api } from '@/api/client';
-import { useIntersection } from '@/hooks/useIntersection';
-import { MediaSubNav } from './MediaSubNav';
+import type { Movie } from '@steadfirm/shared';
+import { ContentPage, FilterRail, NavRail, useContentList } from '@/components/content';
+import type { NavRailItem } from '@/components/content';
+import { EmptyState } from '@/components/EmptyState';
+import { useNavigate } from '@tanstack/react-router';
 
 const { useBreakpoint } = Grid;
 
 type SortOption = 'title:asc' | 'dateAdded:desc' | 'year:desc';
 
+const sortOptions: { value: SortOption; label: string }[] = [
+  { value: 'title:asc', label: 'Title A-Z' },
+  { value: 'dateAdded:desc', label: 'Recently added' },
+  { value: 'year:desc', label: 'Year' },
+];
+
+const mediaNavItems: NavRailItem[] = [
+  { key: 'movies', label: 'Movies', icon: <FilmSlate size={18} /> },
+  { key: 'shows', label: 'Shows', icon: <Television size={18} /> },
+];
+
 export function MediaMoviesPage() {
+  const navigate = useNavigate();
   const screens = useBreakpoint();
   const isMobile = !screens.md;
 
@@ -26,43 +36,12 @@ export function MediaMoviesPage() {
 
   const [sortField, sortOrder] = sort.split(':') as [string, string];
 
-  const { ref: sentinelRef, isIntersecting } = useIntersection({
-    rootMargin: '200% 0px',
-  });
-
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isLoading,
-  } = useInfiniteQuery({
-    queryKey: ['media', 'movies', 'list', { sort: sortField, order: sortOrder }],
-    queryFn: ({ pageParam }) =>
-      api
-        .get('api/v1/media/movies', {
-          searchParams: {
-            page: pageParam,
-            pageSize: DEFAULT_PAGE_SIZE,
-            sort: sortField,
-            order: sortOrder,
-          },
-        })
-        .json<MovieListResponse>(),
-    getNextPageParam: (lastPage) => lastPage.nextPage ?? undefined,
-    initialPageParam: 1,
-  });
-
-  const allMovies = useMemo(
-    () => data?.pages.flatMap((p) => p.items) ?? [],
-    [data],
-  );
-
-  useEffect(() => {
-    if (isIntersecting && hasNextPage && !isFetchingNextPage) {
-      void fetchNextPage();
-    }
-  }, [isIntersecting, hasNextPage, isFetchingNextPage, fetchNextPage]);
+  const { items: allMovies, sentinelRef, isLoading, isFetchingNextPage } =
+    useContentList<Movie>({
+      queryKey: ['media', 'movies', 'list', { sort: sortField, order: sortOrder }],
+      endpoint: 'api/v1/media/movies',
+      params: { sort: sortField, order: sortOrder },
+    });
 
   const posterItems: PosterGridItem[] = useMemo(
     () =>
@@ -86,77 +65,48 @@ export function MediaMoviesPage() {
     [allMovies],
   );
 
+  const handleNavChange = useCallback(
+    (key: string) => {
+      if (key === 'shows') {
+        void navigate({ to: '/media/shows' });
+      }
+    },
+    [navigate],
+  );
+
   return (
     <>
-      <MediaSubNav />
-
-      {/* Sort controls */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          padding: '8px 16px',
-        }}
+      <ContentPage
+        sentinelRef={sentinelRef}
+        isFetchingNextPage={isFetchingNextPage}
+        navRail={
+          <NavRail items={mediaNavItems} activeKey="movies" onChange={handleNavChange} />
+        }
+        filterRail={
+          <FilterRail>
+            <FilterRail.Sort value={sort} onChange={setSort} options={sortOptions} />
+          </FilterRail>
+        }
       >
-        <Select
-          value={sort}
-          onChange={setSort}
-          size="small"
-          style={{ width: 150 }}
-          options={[
-            { value: 'title:asc', label: 'Title A-Z' },
-            { value: 'dateAdded:desc', label: 'Recently added' },
-            { value: 'year:desc', label: 'Year' },
-          ]}
-        />
-      </div>
-
-      {/* Grid */}
-      <div style={{ padding: '0 8px', minHeight: 'calc(100vh - 180px)' }}>
         {isLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 64 }}>
             <Spin size="large" />
           </div>
         ) : posterItems.length === 0 ? (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minHeight: 'calc(100vh - 250px)',
-              color: 'var(--ant-color-text-secondary)',
-            }}
-          >
-            <Play size={64} weight="duotone" />
-            <Typography.Title level={4} type="secondary" style={{ marginTop: 16 }}>
-              No movies yet
-            </Typography.Title>
-          </div>
-        ) : (
-          <PosterGrid
-            items={posterItems}
-            onSelect={handleSelect}
-            hoverIcon={<Play size={40} weight="fill" color={overlay.text} />}
+          <EmptyState
+            icon={<Play size={64} weight="duotone" />}
+            title="No movies yet"
           />
+        ) : (
+          <div style={{ paddingTop: 12 }}>
+            <PosterGrid
+              items={posterItems}
+              onSelect={handleSelect}
+              hoverIcon={<Play size={40} weight="fill" color={overlay.text} />}
+            />
+          </div>
         )}
-
-        <div ref={sentinelRef} style={{ height: 1 }} />
-
-        <AnimatePresence>
-          {isFetchingNextPage && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              style={{ display: 'flex', justifyContent: 'center', padding: 24 }}
-            >
-              <Spin />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+      </ContentPage>
 
       {/* Movie detail lightbox */}
       <MediaViewer
@@ -167,7 +117,6 @@ export function MediaMoviesPage() {
       >
         {selectedMovie && (
           <div style={{ width: '100%', overflow: 'auto' }}>
-            {/* Player or poster */}
             {showPlayer ? (
               <VideoPlayer
                 src={selectedMovie.streamUrl}
@@ -187,7 +136,6 @@ export function MediaMoviesPage() {
                 />
               </div>
             )}
-
             <div style={{ padding: 20 }}>
               <Typography.Title level={3} style={{ margin: 0 }}>
                 {selectedMovie.title}
@@ -206,14 +154,9 @@ export function MediaMoviesPage() {
                 <span>{selectedMovie.runtime} min</span>
                 {selectedMovie.rating && <span>{selectedMovie.rating}</span>}
               </div>
-
-              <Typography.Paragraph
-                style={{ marginTop: 16 }}
-                type="secondary"
-              >
+              <Typography.Paragraph style={{ marginTop: 16 }} type="secondary">
                 {selectedMovie.overview}
               </Typography.Paragraph>
-
               {!showPlayer && (
                 <Button
                   type="primary"

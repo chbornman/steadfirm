@@ -1,12 +1,12 @@
 import { useEffect, useMemo } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import type { QueryKey } from '@tanstack/react-query';
+import type { QueryKey, InfiniteData } from '@tanstack/react-query';
 import type { PaginatedResponse } from '@steadfirm/shared';
 import { DEFAULT_PAGE_SIZE } from '@steadfirm/shared';
 import { api } from '@/api/client';
 import { useIntersection } from './useIntersection';
 
-interface UseContentListOptions<T> {
+interface UseContentListOptions {
   /** React Query cache key */
   queryKey: QueryKey;
   /** API endpoint path (relative to api prefix, e.g. 'api/v1/photos') */
@@ -33,7 +33,7 @@ interface UseContentListResult<T> {
   /** Whether there are more pages to load */
   hasNextPage: boolean;
   /** Access to the raw query data if needed */
-  data: ReturnType<typeof useInfiniteQuery<PaginatedResponse<T>>>['data'];
+  data: InfiniteData<PaginatedResponse<T>> | undefined;
 }
 
 /**
@@ -50,21 +50,22 @@ export function useContentList<T>({
   params = {},
   pageSize = DEFAULT_PAGE_SIZE,
   enabled = true,
-}: UseContentListOptions<T>): UseContentListResult<T> {
+}: UseContentListOptions): UseContentListResult<T> {
   const { ref: sentinelRef, isIntersecting } = useIntersection({
     rootMargin: '200% 0px',
   });
 
-  const query = useInfiniteQuery({
+  const searchParams: Record<string, string | number | boolean> = {
+    pageSize,
+    ...params,
+  };
+
+  const query = useInfiniteQuery<PaginatedResponse<T>, Error, InfiniteData<PaginatedResponse<T>>, QueryKey, number>({
     queryKey,
     queryFn: ({ pageParam }) =>
       api
         .get(endpoint, {
-          searchParams: {
-            page: pageParam,
-            pageSize,
-            ...params,
-          },
+          searchParams: { ...searchParams, page: pageParam },
         })
         .json<PaginatedResponse<T>>(),
     getNextPageParam: (lastPage) => lastPage.nextPage ?? undefined,
@@ -93,7 +94,7 @@ export function useContentList<T>({
     sentinelRef,
     isLoading: query.isLoading,
     isFetchingNextPage: query.isFetchingNextPage,
-    hasNextPage: hasNextPage ?? false,
+    hasNextPage,
     data: query.data,
   };
 }

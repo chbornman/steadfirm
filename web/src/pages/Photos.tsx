@@ -1,18 +1,22 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Select, Typography, Spin, Grid, Image } from 'antd';
+import { useState, useCallback, useRef } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Spin, Grid, Image } from 'antd';
 import { Heart } from '@phosphor-icons/react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { gridItem as gridItemVariant, overlay, cssVar } from '@steadfirm/theme';
 import type { Photo, PhotoListResponse } from '@steadfirm/shared';
-import { DEFAULT_PAGE_SIZE } from '@steadfirm/shared';
-import { api } from '@/api/client';
 import { toggleFavorite } from '@/api/photos';
-import { useIntersection } from '@/hooks/useIntersection';
+import { ContentPage, FilterRail, useContentList } from '@/components/content';
+import { EmptyState } from '@/components/EmptyState';
 
 const { useBreakpoint } = Grid;
 
 type SortOption = 'dateTaken:desc' | 'dateTaken:asc';
+
+const sortOptions: { value: SortOption; label: string }[] = [
+  { value: 'dateTaken:desc', label: 'Newest first' },
+  { value: 'dateTaken:asc', label: 'Oldest first' },
+];
 
 export function PhotosPage() {
   const queryClient = useQueryClient();
@@ -26,52 +30,21 @@ export function PhotosPage() {
 
   const [sortField, sortOrder] = sort.split(':') as [string, string];
 
-  const { ref: sentinelRef, isIntersecting } = useIntersection({
-    rootMargin: '200% 0px',
-  });
-
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isLoading,
-  } = useInfiniteQuery({
-    queryKey: ['photos', 'list', { sort: sortField, order: sortOrder, favorites: favoritesOnly }],
-    queryFn: ({ pageParam }) =>
-      api
-        .get('api/v1/photos', {
-          searchParams: {
-            page: pageParam,
-            pageSize: DEFAULT_PAGE_SIZE,
-            sort: sortField,
-            order: sortOrder,
-            ...(favoritesOnly && { favorites: true }),
-          },
-        })
-        .json<PhotoListResponse>(),
-    getNextPageParam: (lastPage) => lastPage.nextPage ?? undefined,
-    initialPageParam: 1,
-  });
-
-  const allPhotos = useMemo(
-    () => data?.pages.flatMap((page) => page.items) ?? [],
-    [data],
-  );
-
-  const totalCount = data?.pages[0]?.total ?? 0;
-
-  useEffect(() => {
-    if (isIntersecting && hasNextPage && !isFetchingNextPage) {
-      void fetchNextPage();
-    }
-  }, [isIntersecting, hasNextPage, isFetchingNextPage, fetchNextPage]);
+  const { items: allPhotos, sentinelRef, isLoading, isFetchingNextPage } =
+    useContentList<Photo>({
+      queryKey: ['photos', 'list', { sort: sortField, order: sortOrder, favorites: favoritesOnly }],
+      endpoint: 'api/v1/photos',
+      params: {
+        sort: sortField,
+        order: sortOrder,
+        ...(favoritesOnly && { favorites: true }),
+      },
+    });
 
   const favoriteMutation = useMutation({
     mutationFn: toggleFavorite,
     onMutate: async (id: string) => {
       await queryClient.cancelQueries({ queryKey: ['photos'] });
-      // Optimistic update across all pages
       queryClient.setQueriesData<{ pages: PhotoListResponse[]; pageParams: number[] }>(
         { queryKey: ['photos', 'list'] },
         (old) => {
@@ -105,7 +78,6 @@ export function PhotosPage() {
     [favoriteMutation],
   );
 
-  // Ref for tracking which photos have been rendered (for stagger animation)
   const renderedRef = useRef(new Set<string>());
 
   return (
@@ -119,73 +91,32 @@ export function PhotosPage() {
         .photo-cell:hover img { filter: brightness(1.08); }
       `}</style>
 
-      {/* Filter bar */}
-      <div
-        style={{
-          position: 'sticky',
-          top: 56,
-          zIndex: 50,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          padding: '8px 16px',
-          background: 'var(--ant-color-bg-layout)',
-          borderBottom: '1px solid var(--ant-color-border)',
-        }}
+      <ContentPage
+        sentinelRef={sentinelRef}
+        isFetchingNextPage={isFetchingNextPage}
+        filterRail={
+          <FilterRail>
+            <FilterRail.Sort value={sort} onChange={setSort} options={sortOptions} />
+            <FilterRail.Toggle
+              icon={Heart}
+              label="Favorites"
+              value={favoritesOnly}
+              onChange={setFavoritesOnly}
+              options={['All photos', 'Favorites only']}
+            />
+          </FilterRail>
+        }
       >
-        <Select
-          value={sort}
-          onChange={setSort}
-          size="small"
-          style={{ width: 160 }}
-          options={[
-            { value: 'dateTaken:desc', label: 'Newest first' },
-            { value: 'dateTaken:asc', label: 'Oldest first' },
-          ]}
-        />
-        <Select
-          value={favoritesOnly ? 'favorites' : 'all'}
-          onChange={(v) => setFavoritesOnly(v === 'favorites')}
-          size="small"
-          style={{ width: 130 }}
-          options={[
-            { value: 'all', label: 'All photos' },
-            { value: 'favorites', label: 'Favorites' },
-          ]}
-        />
-        <div style={{ flex: 1 }} />
-        {totalCount > 0 && (
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {totalCount.toLocaleString()} photos
-          </Typography.Text>
-        )}
-      </div>
-
-      {/* Photo grid */}
-      <div style={{ minHeight: 'calc(100vh - 120px)' }}>
         {isLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 64 }}>
             <Spin size="large" />
           </div>
         ) : allPhotos.length === 0 ? (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minHeight: 'calc(100vh - 200px)',
-              color: 'var(--ant-color-text-secondary)',
-            }}
-          >
-            <Heart size={64} weight="duotone" />
-            <Typography.Title level={4} type="secondary" style={{ marginTop: 16 }}>
-              {favoritesOnly ? 'No favorites yet' : 'No photos yet'}
-            </Typography.Title>
-            <Typography.Text type="secondary">
-              Upload your first photos to get started
-            </Typography.Text>
-          </div>
+          <EmptyState
+            icon={<Heart size={64} weight="duotone" />}
+            title={favoritesOnly ? 'No favorites yet' : 'No photos yet'}
+            description="Upload your first photos to get started"
+          />
         ) : (
           <div
             style={{
@@ -194,7 +125,7 @@ export function PhotosPage() {
                 ? 'repeat(auto-fill, minmax(100px, 1fr))'
                 : 'repeat(auto-fill, minmax(180px, 1fr))',
               gap: 4,
-              padding: '4px',
+              paddingTop: 4,
             }}
           >
             {allPhotos.map((photo, index) => {
@@ -229,8 +160,6 @@ export function PhotosPage() {
                       display: 'block',
                     }}
                   />
-
-                  {/* Hover overlay */}
                   <div
                     className="photo-hover-overlay"
                     style={{
@@ -240,8 +169,6 @@ export function PhotosPage() {
                       pointerEvents: 'none',
                     }}
                   />
-
-                  {/* Favorite button */}
                   <button
                     className="photo-fav-btn"
                     onClick={(e) => {
@@ -261,13 +188,8 @@ export function PhotosPage() {
                       zIndex: 2,
                     }}
                   >
-                    <Heart
-                      size={20}
-                      weight={photo.isFavorite ? 'fill' : 'regular'}
-                    />
+                    <Heart size={20} weight={photo.isFavorite ? 'fill' : 'regular'} />
                   </button>
-
-                  {/* Video badge */}
                   {photo.type === 'video' && (
                     <div
                       style={{
@@ -291,25 +213,7 @@ export function PhotosPage() {
             })}
           </div>
         )}
-
-        {/* Infinite scroll sentinel */}
-        <div ref={sentinelRef} style={{ height: 1 }} />
-
-        {/* Loading indicator for next page */}
-        <AnimatePresence>
-          {isFetchingNextPage && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              style={{ display: 'flex', justifyContent: 'center', padding: 24 }}
-            >
-              <Spin />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+      </ContentPage>
 
       {/* Lightbox via Ant Design Image.PreviewGroup */}
       <div style={{ display: 'none' }}>

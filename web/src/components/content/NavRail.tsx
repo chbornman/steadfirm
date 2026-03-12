@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cssVar } from '@steadfirm/theme';
-import { RAIL_ICON_SIZE, RAIL_COLLAPSED_WIDTH, RAIL_TOP, RAIL_SPRING } from './constants';
+import { RAIL_COLLAPSED_WIDTH, RAIL_TOP, RAIL_SPRING } from './constants';
 
 /**
  * Floating left-side sub-navigation rail.
