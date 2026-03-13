@@ -30,11 +30,17 @@ export function MusicQueue({ queue, currentIndex, onSelect, onRemove }: MusicQue
               transition: 'background 100ms ease',
             }}
           >
-            <img
-              src={track.albumImageUrl}
-              alt={track.albumName}
-              style={{ width: 36, height: 36, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }}
-            />
+            {track.albumImageUrl ? (
+              <img
+                src={track.albumImageUrl}
+                alt={track.albumName ?? track.title}
+                style={{ width: 36, height: 36, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }}
+              />
+            ) : (
+              <div style={{ width: 36, height: 36, borderRadius: 4, flexShrink: 0, background: 'var(--ant-color-fill-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: 16, opacity: 0.4 }}>&#9835;</span>
+              </div>
+            )}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
                 style={{
@@ -49,7 +55,7 @@ export function MusicQueue({ queue, currentIndex, onSelect, onRemove }: MusicQue
                 {track.title}
               </div>
               <div style={{ fontSize: 11, color: 'var(--ant-color-text-secondary)' }}>
-                {track.artistName}
+                {track.artistName ?? 'Unknown artist'}
               </div>
             </div>
             <span style={{ fontSize: 11, color: 'var(--ant-color-text-secondary)', flexShrink: 0 }}>

@@ -10,9 +10,13 @@ import { musicQueries } from '@/api/media';
 import { useMusicPlayerStore } from '@/stores/music-player';
 
 export function MediaMusicArtistPage() {
-  const { artistId } = useParams({ from: '/music/$artistId' as never });
+  const { artistId } = useParams({ from: '/app/music/$artistId' });
   const navigate = useNavigate();
   const musicPlayer = useMusicPlayerStore();
+
+  const { data: artist } = useQuery({
+    ...musicQueries.artistDetail(artistId),
+  });
 
   const { data: albums, isLoading } = useQuery({
     ...musicQueries.artistAlbums(artistId),
@@ -49,6 +53,43 @@ export function MediaMusicArtistPage() {
       >
         <ArrowLeft size={18} /> Back to artists
       </button>
+
+      {/* Artist header */}
+      {artist && (
+        <div style={{ display: 'flex', gap: 24, marginBottom: 32, alignItems: 'center' }}>
+          <div
+            style={{
+              width: 160,
+              height: 160,
+              borderRadius: '50%',
+              overflow: 'hidden',
+              background: 'var(--ant-color-bg-container)',
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {artist.imageUrl ? (
+              <img
+                src={artist.imageUrl}
+                alt={artist.name}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            ) : (
+              <MusicNote size={48} weight="duotone" color="var(--ant-color-text-quaternary)" />
+            )}
+          </div>
+          <div>
+            <Typography.Title level={2} style={{ margin: 0 }}>
+              {artist.name}
+            </Typography.Title>
+            <div style={{ fontSize: 14, color: 'var(--ant-color-text-secondary)', marginTop: 4 }}>
+              {artist.albumCount != null ? `${artist.albumCount} albums` : `${typedAlbums.length} albums`}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Album list */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -116,7 +157,7 @@ function AlbumSection({ album, onPlayAlbum }: { album: Album; onPlayAlbum: (trac
         <div style={{ flex: 1, minWidth: 0 }}>
           <Typography.Text strong style={{ fontSize: 15 }}>{album.name}</Typography.Text>
           <div style={{ fontSize: 12, color: 'var(--ant-color-text-secondary)', marginTop: 2 }}>
-            {album.year} &middot; {album.trackCount} tracks
+            {[album.year, album.trackCount != null ? `${album.trackCount} tracks` : null].filter(Boolean).join(' \u00b7 ')}
           </div>
           <Button
             size="small"

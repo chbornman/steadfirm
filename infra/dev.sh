@@ -2,28 +2,30 @@
 set -euo pipefail
 
 # ──────────────────────────────────────────────────────────────────────
-# Full dev environment: reset → start services → seed → keep running.
+# Dev environment: start services → keep running.
 #
-# One command to go from zero to a fully populated Steadfirm showcase.
-# Ctrl+C kills all background processes cleanly.
+# By default, starts everything without touching existing data.
+# Use --reset and/or --seed to wipe and repopulate.
 #
-# Usage: ./infra/dev.sh [--no-reset] [--no-seed]
+# Usage: ./infra/dev.sh [--reset] [--seed] [--fresh]
 #
-#   --no-reset  Skip the reset step (keep existing data, just restart)
-#   --no-seed   Skip the seed step (start services without demo data)
+#   --reset   Wipe volumes and recreate containers before starting
+#   --seed    Run the seed script after services are ready
+#   --fresh   Shorthand for --reset --seed (full clean start)
 # ──────────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # ── Parse flags ───────────────────────────────────────────────────────
-SKIP_RESET=0
-SKIP_SEED=0
+DO_RESET=0
+DO_SEED=0
 for arg in "$@"; do
     case "$arg" in
-        --no-reset) SKIP_RESET=1 ;;
-        --no-seed)  SKIP_SEED=1 ;;
-        *)          echo "Unknown flag: $arg"; exit 1 ;;
+        --reset) DO_RESET=1 ;;
+        --seed)  DO_SEED=1 ;;
+        --fresh) DO_RESET=1; DO_SEED=1 ;;
+        *)       echo "Unknown flag: $arg"; exit 1 ;;
     esac
 done
 
@@ -72,14 +74,13 @@ cleanup() {
 trap 'cleanup; exit 0' INT TERM
 trap cleanup EXIT
 
-# ── Step 1: Reset ─────────────────────────────────────────────────────
+# ── Step 1: Reset (opt-in) ────────────────────────────────────────────
 
-if [ "$SKIP_RESET" -eq 0 ]; then
+if [ "$DO_RESET" -eq 1 ]; then
     header "Resetting dev environment"
     "$SCRIPT_DIR/reset-dev.sh"
 else
-    header "Skipping reset (--no-reset)"
-    # Make sure containers are at least running
+    header "Starting containers"
     docker compose -f "$SCRIPT_DIR/docker-compose.yml" -f "$SCRIPT_DIR/docker-compose.dev.yml" up -d
 fi
 
@@ -174,16 +175,16 @@ wait_for() {
 wait_for "BetterAuth" "http://localhost:3002/health" 30
 wait_for "Backend"    "http://localhost:3001/health"  120
 
-# ── Step 5: Seed ──────────────────────────────────────────────────────
+# ── Step 5: Seed (opt-in) ─────────────────────────────────────────────
 
-if [ "$SKIP_SEED" -eq 0 ]; then
+if [ "$DO_SEED" -eq 1 ]; then
     header "Seeding demo content"
     "$SCRIPT_DIR/seed-dev.sh"
 else
-    header "Skipping seed (--no-seed)"
+    info "Skipping seed (use --seed or --fresh to seed)"
 fi
 
-# ── Step 5: Keep running ──────────────────────────────────────────────
+# ── Step 6: Keep running ──────────────────────────────────────────────
 
 header "Ready"
 echo ""

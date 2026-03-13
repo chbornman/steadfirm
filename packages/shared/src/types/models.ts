@@ -53,26 +53,26 @@ export interface Artist {
   id: string;
   name: string;
   imageUrl: string;
-  albumCount: number;
+  albumCount?: number;
 }
 
 export interface Album {
   id: string;
   name: string;
-  year: number;
-  artistName: string;
-  trackCount: number;
+  year?: number;
+  artistName?: string;
+  trackCount?: number;
   imageUrl: string;
 }
 
 export interface Track {
   id: string;
   title: string;
-  trackNumber: number;
-  duration: number;
-  artistName: string;
-  albumName: string;
-  albumImageUrl: string;
+  trackNumber?: number;
+  duration?: number;
+  artistName?: string;
+  albumName?: string;
+  albumImageUrl?: string;
   streamUrl: string;
 }
 

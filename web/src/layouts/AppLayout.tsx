@@ -49,7 +49,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { key: '/photos', label: 'Personal Media', icon: ImagesSquare },
   { key: '/media/movies', label: 'Film & TV', icon: FilmSlate, matchPrefix: '/media' },
-  { key: '/music', label: 'Music', icon: MusicNote },
+  { key: '/music', label: 'Music', icon: MusicNote, matchPrefix: '/music' },
   { key: '/documents', label: 'Documents', icon: FileText },
   { key: '/audiobooks', label: 'Audiobooks', icon: Headphones },
   { key: '/reading', label: 'Reading', icon: BookOpenText },

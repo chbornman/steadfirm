@@ -15,6 +15,9 @@ import { MediaShowsPage } from '@/pages/MediaShows';
 import { MediaShowDetailPage } from '@/pages/MediaShowDetail';
 import { MediaMusicPage } from '@/pages/MediaMusic';
 import { MediaMusicArtistPage } from '@/pages/MediaMusicArtist';
+import { MusicAlbumsPage } from '@/pages/MusicAlbums';
+import { MusicAlbumDetailPage } from '@/pages/MusicAlbumDetail';
+import { MusicSongsPage } from '@/pages/MusicSongs';
 import { DocumentsPage } from '@/pages/Documents';
 import { AudiobooksPage } from '@/pages/Audiobooks';
 import { AudiobookDetailPage } from '@/pages/AudiobookDetail';
@@ -134,15 +137,39 @@ const mediaShowDetailRoute = createRoute({
   component: MediaShowDetailPage,
 });
 
-const musicRoute = createRoute({
+const musicLayoutRoute = createRoute({
   getParentRoute: () => appLayoutRoute,
   path: '/music',
+  component: Outlet,
+});
+
+const musicIndexRoute = createRoute({
+  getParentRoute: () => musicLayoutRoute,
+  path: '/',
   component: MediaMusicPage,
 });
 
+const musicAlbumsRoute = createRoute({
+  getParentRoute: () => musicLayoutRoute,
+  path: '/albums',
+  component: MusicAlbumsPage,
+});
+
+const musicAlbumDetailRoute = createRoute({
+  getParentRoute: () => musicLayoutRoute,
+  path: '/albums/$albumId',
+  component: MusicAlbumDetailPage,
+});
+
+const musicSongsRoute = createRoute({
+  getParentRoute: () => musicLayoutRoute,
+  path: '/songs',
+  component: MusicSongsPage,
+});
+
 const musicArtistRoute = createRoute({
-  getParentRoute: () => appLayoutRoute,
-  path: '/music/$artistId',
+  getParentRoute: () => musicLayoutRoute,
+  path: '/$artistId',
   component: MediaMusicArtistPage,
 });
 
@@ -217,8 +244,13 @@ const routeTree = rootRoute.addChildren([
     mediaMoviesRoute,
     mediaShowsRoute,
     mediaShowDetailRoute,
-    musicRoute,
-    musicArtistRoute,
+    musicLayoutRoute.addChildren([
+      musicIndexRoute,
+      musicAlbumsRoute,
+      musicAlbumDetailRoute,
+      musicSongsRoute,
+      musicArtistRoute,
+    ]),
     documentsRoute,
     audiobooksRoute,
     audiobookDetailRoute,

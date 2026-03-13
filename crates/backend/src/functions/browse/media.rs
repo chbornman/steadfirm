@@ -28,8 +28,12 @@ pub fn router() -> Router<AppState> {
             get(list_episodes),
         )
         .route("/music/artists", get(list_artists))
+        .route("/music/artists/{artist_id}", get(get_artist))
         .route("/music/artists/{artist_id}/albums", get(list_artist_albums))
+        .route("/music/albums", get(list_albums))
+        .route("/music/albums/{album_id}", get(get_album))
         .route("/music/albums/{album_id}/tracks", get(list_album_tracks))
+        .route("/music/tracks", get(list_tracks))
         .route("/{id}", get(get_item))
         .route("/{id}/image", get(get_image))
         .route("/{id}/stream", get(stream_media))
@@ -286,6 +290,30 @@ async fn list_artists(
     )))
 }
 
+async fn get_artist(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(artist_id): Path<String>,
+) -> Result<Json<Artist>, AppError> {
+    let cred = user
+        .credentials
+        .jellyfin
+        .ok_or(AppError::ServiceUnavailable("media not provisioned".into()))?;
+
+    let client = jf_client(&state);
+    let item = client
+        .get_item(&cred.api_key, &cred.service_user_id, &artist_id)
+        .await?;
+
+    let id = jf_str(&item, "id");
+    Ok(Json(Artist {
+        image_url: format!("/api/v1/media/{id}/image"),
+        id,
+        name: jf_str(&item, "name"),
+        album_count: item["childCount"].as_u64().map(|v| v as u32),
+    }))
+}
+
 async fn list_artist_albums(
     State(state): State<AppState>,
     user: AuthUser,
@@ -388,6 +416,163 @@ async fn list_album_tracks(
         .collect();
 
     Ok(Json(items))
+}
+
+async fn list_albums(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Query(params): Query<MediaListParams>,
+) -> Result<Json<PaginatedResponse<Album>>, AppError> {
+    let cred = user
+        .credentials
+        .jellyfin
+        .ok_or(AppError::ServiceUnavailable("media not provisioned".into()))?;
+
+    let client = jf_client(&state);
+    let start_index = page_to_start_index(params.pagination.page, params.pagination.page_size);
+
+    let sort_by = params.sort.as_deref().unwrap_or("SortName");
+    let sort_order = params.order.as_deref().unwrap_or("Ascending");
+
+    let resp = client
+        .get_items(
+            &cred.api_key,
+            &cred.service_user_id,
+            &[
+                ("includeItemTypes", "MusicAlbum"),
+                ("recursive", "true"),
+                ("startIndex", &start_index.to_string()),
+                ("limit", &params.pagination.page_size.to_string()),
+                ("sortBy", sort_by),
+                ("sortOrder", sort_order),
+                ("fields", "PrimaryImageAspectRatio,ChildCount"),
+                ("enableTotalRecordCount", "true"),
+            ],
+        )
+        .await?;
+
+    let total = resp["totalRecordCount"].as_u64().unwrap_or(0);
+    let items = resp["items"]
+        .as_array()
+        .unwrap_or(&Vec::new())
+        .iter()
+        .map(|item| {
+            let id = jf_str(item, "id");
+            Album {
+                image_url: format!("/api/v1/media/{id}/image"),
+                id,
+                name: jf_str(item, "name"),
+                year: item["productionYear"].as_u64().map(|v| v as u32),
+                artist_name: item["albumArtist"].as_str().map(|s| s.to_string()),
+                track_count: item["childCount"].as_u64().map(|v| v as u32),
+            }
+        })
+        .collect();
+
+    Ok(Json(PaginatedResponse::new(
+        items,
+        total,
+        params.pagination.page,
+        params.pagination.page_size,
+    )))
+}
+
+async fn get_album(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(album_id): Path<String>,
+) -> Result<Json<Album>, AppError> {
+    let cred = user
+        .credentials
+        .jellyfin
+        .ok_or(AppError::ServiceUnavailable("media not provisioned".into()))?;
+
+    let client = jf_client(&state);
+    let item = client
+        .get_item(&cred.api_key, &cred.service_user_id, &album_id)
+        .await?;
+
+    let id = jf_str(&item, "id");
+    Ok(Json(Album {
+        image_url: format!("/api/v1/media/{id}/image"),
+        id,
+        name: jf_str(&item, "name"),
+        year: item["productionYear"].as_u64().map(|v| v as u32),
+        artist_name: item["albumArtist"].as_str().map(|s| s.to_string()),
+        track_count: item["childCount"].as_u64().map(|v| v as u32),
+    }))
+}
+
+async fn list_tracks(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Query(params): Query<MediaListParams>,
+) -> Result<Json<PaginatedResponse<Track>>, AppError> {
+    let cred = user
+        .credentials
+        .jellyfin
+        .ok_or(AppError::ServiceUnavailable("media not provisioned".into()))?;
+
+    let client = jf_client(&state);
+    let start_index = page_to_start_index(params.pagination.page, params.pagination.page_size);
+
+    let sort_by = params.sort.as_deref().unwrap_or("SortName");
+    let sort_order = params.order.as_deref().unwrap_or("Ascending");
+
+    let resp = client
+        .get_items(
+            &cred.api_key,
+            &cred.service_user_id,
+            &[
+                ("includeItemTypes", "Audio"),
+                ("recursive", "true"),
+                ("startIndex", &start_index.to_string()),
+                ("limit", &params.pagination.page_size.to_string()),
+                ("sortBy", sort_by),
+                ("sortOrder", sort_order),
+                ("fields", "MediaSources"),
+                ("enableTotalRecordCount", "true"),
+            ],
+        )
+        .await?;
+
+    let total = resp["totalRecordCount"].as_u64().unwrap_or(0);
+    let items = resp["items"]
+        .as_array()
+        .unwrap_or(&Vec::new())
+        .iter()
+        .map(|item| {
+            let id = jf_str(item, "id");
+            let album_id_ref = item["albumId"].as_str().unwrap_or("");
+            Track {
+                stream_url: format!("/api/v1/media/{id}/stream"),
+                album_image_url: if album_id_ref.is_empty() {
+                    None
+                } else {
+                    Some(format!("/api/v1/media/{album_id_ref}/image"))
+                },
+                id,
+                title: jf_str(item, "name"),
+                track_number: item["indexNumber"].as_u64().map(|v| v as u32),
+                duration: item["runTimeTicks"]
+                    .as_u64()
+                    .map(|t| t as f64 / 10_000_000.0),
+                artist_name: item["artists"]
+                    .as_array()
+                    .and_then(|a| a.first())
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                album_name: item["album"].as_str().map(|s| s.to_string()),
+            }
+        })
+        .collect();
+
+    Ok(Json(PaginatedResponse::new(
+        items,
+        total,
+        params.pagination.page,
+        params.pagination.page_size,
+    )))
 }
 
 async fn get_item(

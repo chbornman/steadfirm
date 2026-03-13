@@ -74,14 +74,52 @@ export const musicQueries = {
         })
         .json<PaginatedResponse<Artist>>(),
   }),
+  artistDetail: (artistId: string) => ({
+    queryKey: ['media', 'music', 'artists', artistId] as const,
+    queryFn: () =>
+      api.get(`api/v1/media/music/artists/${artistId}`).json<Artist>(),
+  }),
   artistAlbums: (artistId: string) => ({
     queryKey: ['media', 'music', 'artists', artistId, 'albums'] as const,
     queryFn: () =>
       api.get(`api/v1/media/music/artists/${artistId}/albums`).json<Album[]>(),
   }),
+  albums: (params?: { page?: number; pageSize?: number; sort?: string; order?: string }) => ({
+    queryKey: ['media', 'music', 'albums', params] as const,
+    queryFn: () =>
+      api
+        .get('api/v1/media/music/albums', {
+          searchParams: {
+            ...(params?.page != null && { page: params.page }),
+            ...(params?.pageSize != null && { pageSize: params.pageSize }),
+            ...(params?.sort && { sort: params.sort }),
+            ...(params?.order && { order: params.order }),
+          },
+        })
+        .json<PaginatedResponse<Album>>(),
+  }),
+  albumDetail: (albumId: string) => ({
+    queryKey: ['media', 'music', 'albums', albumId] as const,
+    queryFn: () =>
+      api.get(`api/v1/media/music/albums/${albumId}`).json<Album>(),
+  }),
   albumTracks: (albumId: string) => ({
     queryKey: ['media', 'music', 'albums', albumId, 'tracks'] as const,
     queryFn: () =>
       api.get(`api/v1/media/music/albums/${albumId}/tracks`).json<Track[]>(),
+  }),
+  tracks: (params?: { page?: number; pageSize?: number; sort?: string; order?: string }) => ({
+    queryKey: ['media', 'music', 'tracks', params] as const,
+    queryFn: () =>
+      api
+        .get('api/v1/media/music/tracks', {
+          searchParams: {
+            ...(params?.page != null && { page: params.page }),
+            ...(params?.pageSize != null && { pageSize: params.pageSize }),
+            ...(params?.sort && { sort: params.sort }),
+            ...(params?.order && { order: params.order }),
+          },
+        })
+        .json<PaginatedResponse<Track>>(),
   }),
 };

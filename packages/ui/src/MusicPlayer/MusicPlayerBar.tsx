@@ -78,17 +78,23 @@ export function MusicPlayerBar({ state, onAction }: MusicPlayerBarProps) {
       >
         {/* Left: album art + info */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: isMobile ? 1 : '0 0 200px' }}>
-          <img
-            src={currentTrack.albumImageUrl}
-            alt={currentTrack.albumName}
-            style={{ width: 44, height: 44, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }}
-          />
+          {currentTrack.albumImageUrl ? (
+            <img
+              src={currentTrack.albumImageUrl}
+              alt={currentTrack.albumName ?? currentTrack.title}
+              style={{ width: 44, height: 44, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }}
+            />
+          ) : (
+            <div style={{ width: 44, height: 44, borderRadius: 4, flexShrink: 0, background: 'var(--ant-color-fill-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: 18, opacity: 0.4 }}>&#9835;</span>
+            </div>
+          )}
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {currentTrack.title}
             </div>
             <div style={{ fontSize: 11, color: 'var(--ant-color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {currentTrack.artistName}
+              {currentTrack.artistName ?? 'Unknown artist'}
             </div>
           </div>
         </div>

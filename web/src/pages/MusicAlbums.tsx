@@ -1,26 +1,27 @@
 import { useCallback } from 'react';
 import { Spin } from 'antd';
-import { MusicNote } from '@phosphor-icons/react';
+import { MusicNote, Microphone, VinylRecord } from '@phosphor-icons/react';
 import { motion } from 'framer-motion';
 import { gridContainer, gridItem as gridItemVariant } from '@steadfirm/theme';
-import type { Artist } from '@steadfirm/shared';
+import type { Album } from '@steadfirm/shared';
 import { useNavigate } from '@tanstack/react-router';
 import { ContentPage, NavRail, useContentList } from '@/components/content';
+import type { NavRailItem } from '@/components/content';
 import { EmptyState } from '@/components/EmptyState';
 import { musicNavItems, handleMusicNav } from '@/pages/music-nav';
 
-export function MediaMusicPage() {
+export function MusicAlbumsPage() {
   const navigate = useNavigate();
 
-  const { items: allArtists, sentinelRef, isLoading, isFetchingNextPage } =
-    useContentList<Artist>({
-      queryKey: ['media', 'music', 'artists', 'list'],
-      endpoint: 'api/v1/media/music/artists',
+  const { items: allAlbums, sentinelRef, isLoading, isFetchingNextPage } =
+    useContentList<Album>({
+      queryKey: ['media', 'music', 'albums', 'list'],
+      endpoint: 'api/v1/media/music/albums',
     });
 
   const handleSelect = useCallback(
-    (artist: Artist) => {
-      void navigate({ to: '/music/$artistId', params: { artistId: artist.id } });
+    (album: Album) => {
+      void navigate({ to: '/music/albums/$albumId', params: { albumId: album.id } });
     },
     [navigate],
   );
@@ -36,17 +37,17 @@ export function MediaMusicPage() {
         sentinelRef={sentinelRef}
         isFetchingNextPage={isFetchingNextPage}
         navRail={
-          <NavRail items={musicNavItems} activeKey="artists" onChange={handleNavChange} />
+          <NavRail items={musicNavItems} activeKey="albums" onChange={handleNavChange} />
         }
       >
         {isLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 64 }}>
             <Spin size="large" />
           </div>
-        ) : allArtists.length === 0 ? (
+        ) : allAlbums.length === 0 ? (
           <EmptyState
-            icon={<MusicNote size={64} weight="duotone" />}
-            title="No music yet"
+            icon={<VinylRecord size={64} weight="duotone" />}
+            title="No albums yet"
           />
         ) : (
           <motion.div
@@ -55,30 +56,28 @@ export function MediaMusicPage() {
             animate="visible"
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
               gap: '24px 16px',
               paddingTop: 12,
             }}
           >
-            {allArtists.map((artist) => (
+            {allAlbums.map((album) => (
               <motion.div
-                key={artist.id}
+                key={album.id}
                 variants={gridItemVariant}
-                className="artist-cell"
+                className="album-cell"
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
-                  alignItems: 'center',
                   cursor: 'pointer',
                 }}
-                onClick={() => handleSelect(artist)}
+                onClick={() => handleSelect(album)}
               >
                 <div
                   style={{
                     width: '100%',
-                    maxWidth: 160,
                     aspectRatio: '1',
-                    borderRadius: '50%',
+                    borderRadius: 8,
                     overflow: 'hidden',
                     background: 'var(--ant-color-bg-container)',
                     display: 'flex',
@@ -86,12 +85,12 @@ export function MediaMusicPage() {
                     justifyContent: 'center',
                   }}
                 >
-                  {artist.imageUrl ? (
+                  {album.imageUrl ? (
                     <img
-                      src={artist.imageUrl}
-                      alt={artist.name}
+                      src={album.imageUrl}
+                      alt={album.name}
                       loading="lazy"
-                      className="artist-image"
+                      className="album-image"
                       style={{
                         width: '100%',
                         height: '100%',
@@ -99,21 +98,31 @@ export function MediaMusicPage() {
                       }}
                     />
                   ) : (
-                    <MusicNote size={40} weight="duotone" color="var(--ant-color-text-quaternary)" />
+                    <VinylRecord size={40} weight="duotone" color="var(--ant-color-text-quaternary)" />
                   )}
                 </div>
                 <div
-                  className="artist-name"
                   style={{
-                    marginTop: 10,
+                    marginTop: 8,
                     fontSize: 13,
                     fontWeight: 500,
-                    textAlign: 'center',
-                    color: 'var(--ant-color-text-secondary)',
-                    transition: 'color 150ms ease',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
                   }}
                 >
-                  {artist.name}
+                  {album.name}
+                </div>
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: 'var(--ant-color-text-secondary)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {[album.artistName, album.year].filter(Boolean).join(' \u00b7 ')}
                 </div>
               </motion.div>
             ))}
@@ -122,14 +131,11 @@ export function MediaMusicPage() {
       </ContentPage>
 
       <style>{`
-        .artist-image {
+        .album-image {
           transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .artist-cell:hover .artist-image {
-          transform: scale(1.05);
-        }
-        .artist-cell:hover .artist-name {
-          color: var(--ant-color-text);
+        .album-cell:hover .album-image {
+          transform: scale(1.03);
         }
       `}</style>
     </>
